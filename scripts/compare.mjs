@@ -43,6 +43,24 @@ const PACE = Number(process.env.PACE || 0);
 const widths = args.width ? [Number(args.width)] : WIDTHS;
 
 const PROBE = () => {
+  /**
+   * Undo WordPress's emoji polyfill before measuring.
+   *
+   * `wp-emoji-release.min.js` replaces emoji characters with 17x17 `<img
+   * class="emoji">` elements served from s.w.org — but only when the browser fails
+   * its canvas-based support test, which headless Chromium does because it ships
+   * no colour emoji font. A real visitor's Chrome passes the test and keeps the
+   * text, so the swap is a property of the measuring browser, not of the design.
+   *
+   * The clone does not ship the polyfill (see the README's "Not reproduced"), so
+   * without this the live side gains two nodes on eleven posts, every leaf index
+   * after them shifts, and one real difference is reported as forty. Putting the
+   * alt text back makes both sides the same document again.
+   */
+  for (const img of document.querySelectorAll('img.emoji')) {
+    img.replaceWith(document.createTextNode(img.alt || ''));
+  }
+
   // Force a full style recalculation before reading anything.
   //
   // Chrome resolves `margin-inline: auto` to its used value lazily: on a page whose

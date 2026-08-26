@@ -1323,6 +1323,90 @@ function initEntranceAnimations() {
  * Gravity already renders its own honeypot (`gfield--type-honeypot`), so no extra
  * one is added; a submission that fills it is dropped here the same way.
  * ------------------------------------------------------------------ */
+/**
+ * Gravity Forms ships its wrapper hidden and reveals it from JS.
+ *
+ * Both AJAX-mode forms are served as `<div id="gform_wrapper_N" style="display:none">`
+ * — the plugin's frontend bundle removes the inline style once it has bound its
+ * handlers, and the live DOM on /patient-wellness-intake/ shows the wrapper with
+ * `style=""` and a 3,895px box. Without this the form never appears: the widget
+ * measured 0px tall against production's 3,920 and the whole page below it sat
+ * 3,920px too high, which is exactly what the 900px comparison caught.
+ *
+ * Runs whether or not an endpoint is configured — a hidden form is wrong either way.
+ */
+function revealGravityForms() {
+  for (const wrapper of document.querySelectorAll('[id^="gform_wrapper_"]')) {
+    if (wrapper.style.display === 'none') wrapper.style.removeProperty('display');
+  }
+}
+
+/**
+ * Gravity Forms conditional logic.
+ *
+ * The plugin serves every field visible and hides the dependent ones from JS on
+ * init, driven by a `window['gf_form_conditional_logic'][N]` blob in an inline
+ * script. `scripts/extract.mjs` rescues that blob onto the wrapper as
+ * `data-gm-gf-logic`, because the script itself is WordPress plumbing we drop.
+ *
+ * There is exactly one rule on this site: field 150 on /patient-wellness-intake/ —
+ * the free-text box beside "how many drinks per week?" — shows only when field 149
+ * is "Other". Reproducing it matters twice over: the clone was 102px taller than
+ * production without it, and a visitor who picks "Other" has to get the box.
+ *
+ * Contract off the live hidden field: `style="display: none"` on the `<li>`, and
+ * `disabled` on its input so a hidden field cannot be submitted.
+ */
+const GF_OPERATORS = {
+  is: (value, want) => value.includes(want),
+  isnot: (value, want) => !value.includes(want),
+  contains: (value, want) => value.some((v) => v.includes(want)),
+  starts_with: (value, want) => value.some((v) => v.startsWith(want)),
+  ends_with: (value, want) => value.some((v) => v.endsWith(want)),
+  '>': (value, want) => value.some((v) => Number(v) > Number(want)),
+  '<': (value, want) => value.some((v) => Number(v) < Number(want)),
+};
+
+function initGravityLogic() {
+  for (const wrapper of document.querySelectorAll('[data-gm-gf-logic]')) {
+    let logic;
+    try { logic = JSON.parse(wrapper.dataset.gmGfLogic); } catch { continue; }
+    const formId = /gform_wrapper_(\d+)/.exec(wrapper.id)?.[1];
+    if (!formId) continue;
+
+    /** Every value field `id` currently holds — one entry per checked/selected input. */
+    const valuesOf = (fieldId) => [...wrapper.querySelectorAll(
+      `[name="input_${fieldId}"], [name^="input_${fieldId}."], [name^="input_${fieldId}["]`,
+    )].flatMap((el) => {
+      if (el.type === 'checkbox' || el.type === 'radio') return el.checked ? [el.value] : [];
+      return [el.value ?? ''];
+    });
+
+    const apply = () => {
+      for (const [fieldId, entry] of Object.entries(logic)) {
+        const rule = entry?.field;
+        if (!rule) continue;
+        const matches = rule.rules.map((r) => {
+          const test = GF_OPERATORS[r.operator] || GF_OPERATORS.is;
+          return test(valuesOf(r.fieldId), r.value);
+        });
+        const met = rule.logicType === 'any' ? matches.some(Boolean) : matches.every(Boolean);
+        const show = rule.actionType === 'show' ? met : !met;
+        const li = document.getElementById(`field_${formId}_${fieldId}`);
+        if (!li) continue;
+        if (show) li.style.removeProperty('display');
+        else li.style.display = 'none';
+        // A hidden field must not be submitted, which is why the plugin disables it.
+        for (const input of li.querySelectorAll('input, select, textarea')) input.disabled = !show;
+      }
+    };
+
+    apply();
+    wrapper.addEventListener('change', apply);
+    wrapper.addEventListener('input', apply);
+  }
+}
+
 function initHostedForms() {
   const endpoint = document.documentElement.dataset.contactEndpoint || '';
   const forms = [...document.querySelectorAll('form[id^="gform_"], form.elementor-form')];
@@ -1331,6 +1415,9 @@ function initHostedForms() {
   for (const form of forms) {
     form.setAttribute('action', endpoint);
     form.setAttribute('method', 'post');
+    // The AJAX forms post into a hidden iframe; with the destination moved, the
+    // browser must do a real cross-origin fetch instead.
+    form.removeAttribute('target');
 
     // The status line goes where the plugin puts its own validation summary, so it
     // inherits the form's typography instead of arriving unstyled.
@@ -1442,6 +1529,8 @@ onReady(() => {
   initWidgets(document);
   initAnchors();
   initEntranceAnimations();
+  revealGravityForms();
+  initGravityLogic();
   initHostedForms();
   initPopups();
   initTrailingNodes();

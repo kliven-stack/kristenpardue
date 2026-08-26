@@ -30,34 +30,43 @@ const check = (name, pass, detail = '') => {
 
 const browser = await chromium.launch();
 
-const open = async (path, width = 1440, height = 900) => {
+/**
+ * Opens a page with the third-party form hosts blocked — they are not under test,
+ * and both reset headless traffic at random from some networks.
+ *
+ * `popup` says what to do about Elementor popup 2995, which opens one second after
+ * load on every page and covers the viewport: `dismiss` (the default) closes it and
+ * leaves the page usable, `keep` leaves it alone for the popup tests themselves.
+ */
+const open = async (target, { width = 1440, height = 900, popup = 'dismiss' } = {}) => {
   const ctx = await browser.newContext({ viewport: { width, height } });
-  // Third-party embeds are not under test and their hosts reset headless traffic.
   await ctx.route('**://verified.trustymail.co/**', (r) => r.abort());
   await ctx.route('**://*.leadconnectorhq.com/**', (r) => r.abort());
-  await ctx.route('**://*.youtube.com/**', (r) => r.abort());
-  await ctx.route('**://*.youtube-nocookie.com/**', (r) => r.abort());
-  await ctx.route('**://*.googletagmanager.com/**', (r) => r.abort());
-  await ctx.route('**://offsiteschedule.zocdoc.com/**', (r) => r.abort());
-  await ctx.route('**://threebestrated.com/**', (r) => r.abort());
+  await ctx.route('**://*.activehosted.com/**', (r) => r.abort());
+  await ctx.route('**://challenges.cloudflare.com/**', (r) => r.abort());
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e).split('\n')[0]));
   await page.bringToFront();
-  await page.goto(ORIGIN + path, { waitUntil: 'load', timeout: 60000 });
+  await page.goto(ORIGIN + target, { waitUntil: 'load', timeout: 60000 });
   await page.evaluate(() => document.fonts?.ready);
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(1600);
+  if (popup === 'dismiss') {
+    await page.evaluate(() => {
+      for (const modal of document.querySelectorAll('.elementor-popup-modal')) modal.remove();
+      document.body.classList.remove('dialog-body', 'dialog-lightbox-body', 'dialog-container', 'dialog-lightbox-container');
+    });
+  }
   return { ctx, page, errors };
 };
 
-/** The sticky header leaves a hidden clone once pinned; name the live copy. */
-const HEADER = 'header';
+const HEADER = 'header.elementor-location-header';
 
 /* ------------------------------------------------------------------ sticky */
 {
   const { ctx, page } = await open('/');
   const state = () => page.evaluate(() => {
-    const el = document.querySelector('[data-id="0edd40f"]');
+    const el = document.querySelector('[data-id="094c80e"]:not(.elementor-sticky__spacer)');
     return {
       active: el.classList.contains('elementor-sticky--active'),
       effects: el.classList.contains('elementor-sticky--effects'),
@@ -67,23 +76,20 @@ const HEADER = 'header';
     };
   });
 
+  // Unlike the sibling sites, this header's sticky row is the first thing in the
+  // document, so it is pinned from the first paint — which is what the live DOM
+  // shows at scrollY 0 too.
   const top = await state();
-  check('sticky: header is in normal flow at the top of the page',
-    !top.active && top.spacers === 0 && top.y > 0, JSON.stringify(top));
+  check('sticky: the menu row is pinned from the first paint',
+    top.active && top.spacers === 1 && top.y === 0 && /position: fixed/.test(top.style || ''),
+    JSON.stringify(top));
+  check('sticky: --effects is set while pinned (effects offset is 0)', top.effects);
 
-  await page.evaluate(() => window.scrollTo(0, 400));
+  await page.evaluate(() => window.scrollTo(0, 800));
   await page.waitForTimeout(400);
   const down = await state();
-  check('sticky: header pins once scrolled past it',
-    down.active && down.spacers === 1 && down.y === 0 && /position: fixed/.test(down.style || ''),
-    JSON.stringify(down));
-  check('sticky: --effects is set while pinned', down.effects);
-
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(400);
-  const back = await state();
-  check('sticky: header releases and removes its spacer on the way back up',
-    !back.active && back.spacers === 0 && back.y > 0, JSON.stringify(back));
+  check('sticky: it stays pinned and keeps exactly one spacer once scrolled',
+    down.active && down.spacers === 1 && down.y === 0, JSON.stringify(down));
   await ctx.close();
 }
 
@@ -101,8 +107,8 @@ const HEADER = 'header';
     annotated.hasSubmenu && annotated.pop === 'true' && annotated.controls && annotated.expanded === 'false',
     JSON.stringify(annotated));
 
-  const sub = () => page.$eval('.elementor-nav-menu--main li.menu-item-has-children ul.sub-menu',
-    (el) => ({ display: getComputedStyle(el).display, box: el.getBoundingClientRect().height }));
+  const sub = () => page.$eval(`${HEADER} .elementor-nav-menu--main li.menu-item-has-children ul.sub-menu`,
+    (el) => ({ display: getComputedStyle(el).display }));
 
   const box = await page.locator(`${HEADER} .elementor-nav-menu--main li.menu-item-has-children > a`).first().boundingBox();
   await page.mouse.move(box.x - 60, box.y + box.height / 2);
@@ -115,14 +121,14 @@ const HEADER = 'header';
 
   // Playbook §3.11: the pointer must survive the crossing from the parent item
   // into the sub-menu. Walk the real path — parent → gap → first sub-item.
-  const geo = await page.evaluate(() => {
-    const li = document.querySelector('.elementor-nav-menu--main li.menu-item-has-children');
+  const geo = await page.evaluate((header) => {
+    const li = document.querySelector(`${header} .elementor-nav-menu--main li.menu-item-has-children`);
     const s = li.querySelector('ul.sub-menu').getBoundingClientRect();
     const p = li.getBoundingClientRect();
     const a = li.querySelector('ul.sub-menu a').getBoundingClientRect();
     return { gapY: p.bottom + Math.max(0.5, (s.top - p.bottom) / 2), midX: s.left + s.width / 2,
       itemX: a.left + a.width / 2, itemY: a.top + a.height / 2 };
-  });
+  }, HEADER);
   await page.mouse.move(geo.midX, geo.gapY, { steps: 4 });
   await page.waitForTimeout(150);
   check('nav: sub-menu stays open while the pointer crosses the gap (playbook 3.11)',
@@ -136,14 +142,14 @@ const HEADER = 'header';
   await page.waitForTimeout(200);
   check('nav: sub-menu is still open 200ms after leaving (500ms hide delay)',
     (await sub()).display === 'block');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   check('nav: sub-menu closes after the hide delay', (await sub()).display === 'none');
   await ctx.close();
 }
 
 /* --------------------------------------------------------------- mobile nav */
 for (const width of [900, 390]) {
-  const { ctx, page } = await open('/', width, 900);
+  const { ctx, page } = await open('/', { width });
   const toggle = page.locator(`${HEADER} .elementor-menu-toggle`).first();
   check(`nav @${width}: burger is visible`, await toggle.isVisible());
   check(`nav @${width}: horizontal menu is hidden`,
@@ -152,11 +158,15 @@ for (const width of [900, 390]) {
   const panel = () => page.$eval('nav.elementor-nav-menu--dropdown', (el) => ({
     hidden: el.getAttribute('aria-hidden'),
     x: Math.round(el.getBoundingClientRect().x),
-    w: Math.round(el.getBoundingClientRect().width),
+    top: el.style.top,
   }));
+  // Faithfully 10px off the viewport's left edge above 767px, and flush at 390 —
+  // Elementor anchors the stretched panel to the burger, which sits 10px inside the
+  // widget at tablet widths. Production does exactly this; see the README.
+  const expectedX = width >= 768 ? -10 : 0;
   const shut = await panel();
-  check(`nav @${width}: panel is stretched to the viewport, flush left`,
-    shut.x === 0 && shut.w === width, JSON.stringify(shut));
+  check(`nav @${width}: panel is stretched to production's offset (x=${expectedX})`,
+    shut.x === expectedX && shut.top === '45px', JSON.stringify(shut));
 
   await toggle.click();
   await page.waitForTimeout(400);
@@ -178,6 +188,26 @@ for (const width of [900, 390]) {
   await ctx.close();
 }
 
+/* ------------------------------------------------------------- search form */
+{
+  const { ctx, page } = await open('/');
+  const state = () => page.$eval('.elementor-search-form__container', (el) => ({
+    open: el.classList.contains('elementor-search-form--full-screen'),
+    scale: getComputedStyle(el).transform,
+  }));
+  check('search: the overlay starts closed', !(await state()).open);
+  await page.locator(`${HEADER} .elementor-search-form__toggle`).first().click();
+  await page.waitForTimeout(400);
+  const open1 = await state();
+  check('search: the magnifier opens the full-screen overlay', open1.open, JSON.stringify(open1));
+  check('search: the input takes focus',
+    await page.evaluate(() => document.activeElement?.classList.contains('elementor-search-form__input')));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  check('search: Escape closes it', !(await state()).open);
+  await ctx.close();
+}
+
 /* ---------------------------------------------------------------- carousels */
 {
   const { ctx, page, errors } = await open('/');
@@ -187,168 +217,272 @@ for (const width of [900, 390]) {
   const t = await page.evaluate(() => {
     const c = document.querySelector('.elementor-widget-testimonial-carousel .elementor-main-swiper');
     const w = c.querySelector('.swiper-wrapper');
-    return { init: c.classList.contains('swiper-initialized'), slides: c.querySelectorAll('.swiper-slide').length,
+    return {
+      init: c.classList.contains('swiper-initialized'),
+      backface: c.classList.contains('swiper-backface-hidden'),
+      slides: c.querySelectorAll('.swiper-slide').length,
       dupes: c.querySelectorAll('.swiper-slide-duplicate').length,
-      active: !!c.querySelector('.swiper-slide-active'), transform: w.style.transform,
-      slideW: c.querySelector('.swiper-slide')?.style.width };
+      active: !!c.querySelector('.swiper-slide-active'),
+      transform: w.style.transform,
+      bullets: c.closest('.elementor-widget').querySelectorAll('.swiper-pagination-bullet').length,
+      slideW: c.querySelector('.swiper-slide')?.style.width,
+    };
   });
-  check('carousel: testimonial carousel initialises with loop clones',
-    t.init && t.slides === 15 && t.dupes === 2 && t.active && /translate3d/.test(t.transform), JSON.stringify(t));
+  // Three testimonials, one up, looping: 3 + 1 clone each side = 5, and under
+  // Swiper's 10-slide backface threshold.
+  check('carousel: the home testimonial carousel matches production\'s slide set',
+    t.init && t.slides === 5 && t.dupes === 2 && t.backface && t.active && /translate3d/.test(t.transform),
+    JSON.stringify(t));
+  check('carousel: it paints one bullet per slide', t.bullets === 3, String(t.bullets));
 
-  const first = await page.$eval('.elementor-widget-testimonial-carousel .swiper-slide-active', (el) => el.textContent.slice(0, 40));
-  await page.waitForTimeout(6000);
-  const second = await page.$eval('.elementor-widget-testimonial-carousel .swiper-slide-active', (el) => el.textContent.slice(0, 40));
-  check('carousel: testimonial carousel autoplays', first !== second, `${first!==second ? 'advanced' : 'stuck on: ' + first}`);
-
-  await page.evaluate(() => document.querySelector('.eael-tm-carousel')?.scrollIntoView({ block: 'center' }));
-  await page.waitForTimeout(600);
-  const dots = await page.evaluate(() => {
-    const p = document.querySelector('.swiper-pagination-9e15ab3');
-    return { n: p?.children.length, h: Math.round(p.getBoundingClientRect().height),
-      active: p?.querySelectorAll('.swiper-pagination-bullet-active').length,
-      clickable: p?.classList.contains('swiper-pagination-clickable') };
+  await page.evaluate(() => {
+    const c = document.querySelector('.elementor-widget-testimonial-carousel .elementor-main-swiper');
+    c.eCarousel.slideBy(1);
   });
-  check('carousel: team strip renders its dots row', dots.n > 1 && dots.h >= 20 && dots.active === 1 && dots.clickable,
-    JSON.stringify(dots));
+  await page.waitForTimeout(1800);
+  const advanced = await page.$eval('.elementor-widget-testimonial-carousel .swiper-pagination-bullet-active',
+    (el) => el.getAttribute('aria-label'));
+  check('carousel: advancing moves the active bullet', advanced === 'Go to slide 2', advanced);
   check('home page raises no script errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }
 {
-  const { ctx, page } = await open('/book-an-appointment/');
-  await page.evaluate(() => document.querySelector('.elementor-widget-reviews')?.scrollIntoView({ block: 'center' }));
-  await page.waitForTimeout(800);
-  const read = () => page.evaluate(() => {
-    const w = document.querySelector('.elementor-widget-reviews');
-    return { current: w.querySelector('.swiper-pagination-current')?.textContent,
-      total: w.querySelector('.swiper-pagination-total')?.textContent,
-      active: w.querySelector('.swiper-slide-active')?.getAttribute('data-swiper-slide-index') };
-  });
-  const a = await read();
-  check('carousel: reviews widget paints its fraction pagination', a.current === '1' && a.total === '5', JSON.stringify(a));
-  await page.click('.elementor-widget-reviews .elementor-swiper-button-next');
+  const { ctx, page } = await open('/faq/');
+  await page.evaluate(() => document.querySelector('.elementor-widget-media-carousel')?.scrollIntoView({ block: 'center' }));
   await page.waitForTimeout(900);
-  const b = await read();
-  check('carousel: the reviews next arrow advances it', b.current === '2' && b.active !== a.active, JSON.stringify(b));
+  const m = await page.evaluate(() => {
+    const c = document.querySelector('.elementor-widget-media-carousel .elementor-main-swiper');
+    return {
+      slides: c.querySelectorAll('.swiper-slide').length,
+      width: c.querySelector('.swiper-slide').style.width,
+      container: Math.round(c.clientWidth),
+      backface: c.classList.contains('swiper-backface-hidden'),
+    };
+  });
+  // Five slides, three up, looping: 5 + 3 each side = 11, each a third of the
+  // container with no gap (space_between is 0 at desktop on this widget).
+  check('carousel: /faq/ media carousel is three-up with production\'s loop count',
+    m.slides === 11 && !m.backface && Math.abs(parseFloat(m.width) - m.container / 3) < 1, JSON.stringify(m));
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open('/about/');
+  await page.evaluate(() => document.querySelector('.elementor-widget-media-carousel')?.scrollIntoView({ block: 'center' }));
+  await page.waitForTimeout(900);
+  const s = await page.evaluate(() => {
+    const w = document.querySelector('.elementor-widget-media-carousel');
+    const [stage, strip] = w.querySelectorAll('.elementor-main-swiper');
+    return {
+      stageSlides: stage.querySelectorAll('.swiper-slide').length,
+      stripSlides: strip.querySelectorAll('.swiper-slide').length,
+      strip: strip.classList.contains('elementor-thumbnails-swiper'),
+      stageWidth: stage.querySelector('.swiper-slide').style.width,
+      stageContainer: Math.round(stage.clientWidth),
+      active: stage.querySelector('.swiper-slide-active')?.dataset.swiperSlideIndex,
+    };
+  });
+  check('carousel: the slideshow skin builds both swipers with production\'s 15 slides',
+    s.strip && s.stageSlides === 15 && s.stripSlides === 15
+    && Math.abs(parseFloat(s.stageWidth) - s.stageContainer) < 1, JSON.stringify(s));
+
+  await page.locator('.elementor-thumbnails-swiper .swiper-slide').nth(7).click();
+  await page.waitForTimeout(900);
+  const after = await page.$eval('.elementor-widget-media-carousel .elementor-main-swiper .swiper-slide-active',
+    (el) => el.dataset.swiperSlideIndex);
+  check('carousel: clicking a thumbnail moves the stage', after !== s.active, `${s.active} → ${after}`);
   await ctx.close();
 }
 
-/* ---------------------------------------------------------------- accordion */
+/* ------------------------------------------------------------------ toggle */
 {
-  const { ctx, page } = await open('/services/gout/');
-  await page.evaluate(() => document.querySelector('.eael-adv-accordion')?.scrollIntoView({ block: 'center' }));
+  const { ctx, page } = await open('/faq/');
+  await page.evaluate(() => document.querySelector('.elementor-widget-toggle')?.scrollIntoView({ block: 'center' }));
   await page.waitForTimeout(500);
-  const read = () => page.$$eval('.eael-accordion-list', (ls) => ls.map((l) => ({
-    open: l.querySelector('.eael-accordion-header').classList.contains('active'),
-    shown: getComputedStyle(l.querySelector('.eael-accordion-content')).display !== 'none',
+  const read = () => page.$$eval('.elementor-widget-toggle .elementor-tab-title', (ts) => ts.map((t) => ({
+    open: t.classList.contains('elementor-active'),
+    expanded: t.getAttribute('aria-expanded'),
+    shown: getComputedStyle(document.getElementById(t.getAttribute('aria-controls'))).display !== 'none',
   })));
   const start = await read();
-  check('accordion: exactly one panel is open by default',
-    start.filter((x) => x.open).length === 1 && start[0].open && start[0].shown, JSON.stringify(start));
+  check('toggle: every panel starts closed, as production renders them',
+    start.length > 1 && start.every((x) => !x.open && !x.shown && x.expanded === 'false'),
+    `${start.length} items`);
 
-  await page.locator('.eael-accordion-list .eael-accordion-header').nth(1).click();
-  await page.waitForTimeout(500);
-  const after = await read();
-  check('accordion: opening another panel closes the first',
-    after[1].open && after[1].shown && !after[0].open && !after[0].shown, JSON.stringify(after));
+  await page.locator('.elementor-widget-toggle .elementor-tab-title').first().click();
+  await page.waitForTimeout(400);
+  const one = await read();
+  check('toggle: clicking a title opens its panel', one[0].open && one[0].shown && one[0].expanded === 'true');
+
+  await page.locator('.elementor-widget-toggle .elementor-tab-title').nth(1).click();
+  await page.waitForTimeout(400);
+  const two = await read();
+  // Elementor's toggle is not an accordion — several panels may be open at once.
+  check('toggle: a second panel opens without closing the first',
+    two[0].open && two[0].shown && two[1].open && two[1].shown);
+
+  await page.locator('.elementor-widget-toggle .elementor-tab-title').first().click();
+  await page.waitForTimeout(400);
+  const shut = await read();
+  check('toggle: clicking an open title closes it again', !shut[0].open && !shut[0].shown);
   await ctx.close();
 }
 
-/* --------------------------------------------------------------------- TOC */
+/* ------------------------------------------------------------------ popups */
 {
-  const { ctx, page } = await open('/blog/ingrown-toenail-treatment/');
-  const links = await page.$$eval('.elementor-toc__list-item a', (as) => as.length);
-  check('toc: the list is rendered', links > 1, `${links} entries`);
-  const collapsed = () => page.$eval('[data-widget_type="table-of-contents.default"]',
-    (el) => el.classList.contains('elementor-toc--collapsed'));
-  check('toc: starts open at desktop', !(await collapsed()));
-  await page.locator('.elementor-toc__toggle-button--collapse').click();
-  await page.waitForTimeout(300);
-  check('toc: the toggle collapses it', await collapsed());
-  await ctx.close();
-}
-
-/* ------------------------------------------------------------------- video */
-{
-  const { ctx, page } = await open('/about-us/');
-  const v = await page.evaluate(() => {
-    const el = document.querySelector('.elementor-video');
-    if (!el) return null;
-    return { tag: el.tagName, src: el.getAttribute('src')?.slice(0, 60),
-      h: Math.round(el.getBoundingClientRect().height) };
+  // Popup 2995 — page load, one second, at most once per visitor.
+  const { ctx, page } = await open('/', { popup: 'keep' });
+  const modal = await page.evaluate(() => {
+    const m = document.querySelector('.elementor-popup-modal');
+    return m && {
+      id: m.id,
+      classes: m.className,
+      aria: m.getAttribute('aria-modal'),
+      body: document.body.className.includes('dialog-lightbox-body'),
+      content: !!m.querySelector('.dialog-message .elementor-location-popup'),
+      closeButton: !!m.querySelector('.dialog-close-button'),
+      dialogCss: !!document.querySelector('link[href*="dialog.min.css"]'),
+    };
   });
-  // Playbook §3.12: the iframe must *be* the .elementor-video node, not sit inside
-  // one, or the aspect-ratio height chain breaks and the player collapses.
-  check('video: the iframe replaces the placeholder rather than nesting inside it',
-    v && v.tag === 'IFRAME' && v.h > 200, JSON.stringify(v));
+  check('popup: the subscribe popup opens a second after load, in Elementor\'s wrapper',
+    modal && modal.id === 'elementor-popup-modal-2995' && modal.aria === 'true'
+    && modal.body && modal.content && modal.closeButton && modal.dialogCss,
+    JSON.stringify(modal));
+  check('popup: the dead "Thank You" popup 3170 is not opened by anything',
+    !(await page.$('#elementor-popup-modal-3170')));
+
+  await page.locator('.dialog-close-button').first().click();
+  await page.waitForTimeout(400);
+  check('popup: the close button dismisses it and cleans up <body>',
+    !(await page.$('.elementor-popup-modal'))
+    && !(await page.evaluate(() => document.body.className.includes('dialog-lightbox-body'))));
+
+  // Elementor caps it at one showing per visitor, in localStorage. A second page
+  // view in the same context must not re-open it.
+  await page.goto(ORIGIN + '/about/', { waitUntil: 'load' });
+  await page.waitForTimeout(2500);
+  check('popup: the once-per-visitor cap is honoured on the next page',
+    !(await page.$('.elementor-popup-modal')));
   await ctx.close();
 }
 {
-  const { ctx, page } = await open('/testimonials/');
-  await page.evaluate(() => document.querySelector('.e-tabs')?.scrollIntoView({ block: 'center' }));
+  // Popup 2974 — the only `#elementor-action:` trigger on the site.
+  const { ctx, page } = await open('/favorite-products/');
+  await page.locator('a[href*="elementor-action"]').first().click();
   await page.waitForTimeout(600);
-  const read = () => page.evaluate(() => {
-    const tabs = [...document.querySelectorAll('.e-tab-title')];
-    const shown = [...document.querySelectorAll('.e-tab-content')].filter((c) => getComputedStyle(c).display !== 'none' && c.querySelector('iframe'));
-    return { selected: tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true'),
-      shownCount: shown.length, shownId: shown[0]?.id };
+  const m = await page.evaluate(() => {
+    const el = document.querySelector('.elementor-popup-modal');
+    return el && { id: el.id, text: el.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) };
   });
-  const a = await read();
-  check('playlist: the first video is selected and mounted', a.selected === 0 && a.shownCount === 1, JSON.stringify(a));
-  await page.locator('.e-tab-title').nth(2).click();
-  await page.waitForTimeout(700);
-  const b = await read();
-  check('playlist: clicking a tab swaps the video',
-    b.selected === 2 && b.shownCount === 1 && b.shownId !== a.shownId, JSON.stringify(b));
+  check('popup: the "Visit Supplement Store" button opens popup 2974',
+    m && m.id === 'elementor-popup-modal-2974' && /Register/.test(m.text), JSON.stringify(m));
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  check('popup: Escape dismisses it', !(await page.$('.elementor-popup-modal')));
+  await ctx.close();
+}
+
+/* --------------------------------------------------------------- countdowns */
+{
+  const { ctx, page } = await open('/foundations/');
+  await page.waitForTimeout(1500);
+  const cd = await page.evaluate(() => {
+    const w = document.querySelector('.uael-countdown-wrapper');
+    return w && { display: w.style.display, flash: w.classList.contains('flash-animation'),
+      height: Math.round(w.closest('.elementor-widget').getBoundingClientRect().height) };
+  });
+  // The due date was 2023-02-28 and `expire-action` is `hide`: production paints
+  // nothing here, and so must the clone, or the page runs long by the timer's height.
+  check('countdown: the expired timer on /foundations/ is hidden, as production hides it',
+    cd && cd.display === 'none' && cd.flash && cd.height === 0, JSON.stringify(cd));
+  await ctx.close();
+}
+{
+  const { ctx, page } = await open('/foundations-old/');
+  await page.waitForTimeout(2500);
+  const cd = await page.evaluate(() => {
+    const w = document.querySelector('.uael-countdown-wrapper');
+    const digits = [...w.querySelectorAll('.uael-countdown-item')].map((e) => e.textContent.trim());
+    return { type: w.dataset.countdownType, display: w.style.display, digits,
+      cookie: document.cookie.includes('uael-time-to-run-') };
+  });
+  check('countdown: the evergreen timer runs and remembers its start in a cookie',
+    cd.type === 'evergreen' && cd.display !== 'none' && cd.digits.filter(Boolean).length === 4 && cd.cookie,
+    JSON.stringify(cd));
+  await ctx.close();
+}
+
+/* -------------------------------------------------------------- posts grids */
+{
+  const { ctx, page } = await open('/blog/');
+  const grid = await page.evaluate(() => {
+    const c = document.querySelector('.elementor-posts-container');
+    const thumbs = [...document.querySelectorAll('.elementor-post__thumbnail')];
+    return {
+      ratio: c.classList.contains('elementor-has-item-ratio'),
+      cards: c.querySelectorAll('.elementor-post').length,
+      fitHeight: thumbs.filter((t) => t.classList.contains('elementor-fit-height')).length,
+      heights: [...new Set(thumbs.map((t) => Math.round(t.getBoundingClientRect().height)))],
+    };
+  });
+  // The ratio class is what gives every thumbnail the same box; without it the
+  // cards take their images' natural heights and the listing runs long.
+  check('posts: the grid carries elementor-has-item-ratio and boxes every thumbnail',
+    grid.ratio && grid.cards > 1 && grid.heights.length === 1, JSON.stringify(grid));
+
+  const pagination = await page.$$eval('.elementor-pagination a.page-numbers', (as) => as.map((a) => a.getAttribute('href')));
+  check('posts: pagination links the built /blog/N/ pages',
+    pagination.includes('/blog/2/') && pagination.includes('/blog/10/'), pagination.join(' '));
   await ctx.close();
 }
 
 /* ------------------------------------------------------------------- forms */
-const endpointBuilt = (await readFile(path.join(DIST, 'contact-us/index.html'), 'utf8')).includes('gm-form__form');
+const endpointBuilt = (await readFile(path.join(DIST, 'contact-me/index.html'), 'utf8')).includes('gm-form__form');
 console.log(`\n(forms: dist was built ${endpointBuilt ? 'WITH' : 'WITHOUT'} PUBLIC_CONTACT_ENDPOINT)`);
 
 if (!endpointBuilt) {
-  const { ctx, page } = await open('/contact-us/');
-  check('form: with no endpoint configured, the original embed is kept',
-    (await page.$$('iframe[src*="trustymail"]')).length === 1);
+  const { ctx, page } = await open('/contact-me/');
+  check('form: with no endpoint configured, the ActiveCampaign embed is kept',
+    (await page.$$('._form_5')).length === 1);
   await ctx.close();
-  const b = await open('/pay-my-bill/');
-  check('form: with no endpoint configured, the original WPForms markup is kept',
-    (await b.page.$$('#wpforms-3051')).length === 1);
+  const b = await open('/', { popup: 'keep' });
+  check('form: with no endpoint configured, the LeadConnector subscribe iframe is kept',
+    (await b.page.$$('iframe[src*="FMxAdmW9fwWIvqjnE8bk"]')).length === 1);
   await b.ctx.close();
 } else {
-  const { ctx, page, errors } = await open('/contact-us/');
+  const { ctx, page, errors } = await open('/contact-me/');
   const fields = await page.$$eval('form.gm-form__form [name]', (els) => els.map((e) => e.name));
   check('form: the contact form replaces the embed with the widget\'s own field set',
-    ['full_name', 'phone', 'email', 'message', 'terms_and_conditions'].every((n) => fields.includes(n)),
+    ['firstname', 'lastname', 'email', 'phone', 'enquiry', 'message'].every((n) => fields.includes(n)),
     fields.join(', '));
-  check('form: the dead LeadConnector iframe is gone', (await page.$$('iframe[src*="trustymail"]')).length === 0);
-  check('form: every field has a real label', await page.$$eval('form.gm-form__form input:not([type=hidden]):not([name=website]), form.gm-form__form textarea',
-    (els) => els.every((el) => !!el.labels?.length)));
+  check('form: the ActiveCampaign loader is gone', (await page.$$('._form_5')).length === 0);
+  check('form: every field has a real label',
+    await page.$$eval('form.gm-form__form input:not([type=hidden]):not([name=website]), form.gm-form__form textarea, form.gm-form__form select',
+      (els) => els.every((el) => !!el.labels?.length)));
+  const options = await page.$$eval('select[name="enquiry"] option', (os) => os.map((o) => o.value));
+  check('form: the enquiry select carries the widget\'s three options',
+    options.length === 4 && options.includes('Speaking inquiry'), options.join(' | '));
 
-  // Native validation blocks an empty submit.
   await page.click('.gm-form__submit');
   await page.waitForTimeout(300);
   check('form: an empty submit is blocked by validation',
     await page.$eval('.gm-form__status', (el) => el.textContent.trim() === ''));
 
-  // Honeypot: filled → success shown, nothing sent.
   let posted = 0;
   await page.route('**://example.test/**', (r) => { posted++; r.fulfill({ status: 200, body: 'ok' }); });
-  await page.fill('input[name="full_name"]', 'Test Person');
-  await page.fill('input[name="phone"]', '6155550123');
-  await page.fill('input[name="email"]', 'test@example.com');
-  await page.fill('textarea[name="message"]', 'Hello');
+  const fill = async () => {
+    await page.fill('input[name="firstname"]', 'Test');
+    await page.fill('input[name="lastname"]', 'Person');
+    await page.fill('input[name="email"]', 'test@example.com');
+    await page.fill('textarea[name="message"]', 'Hello');
+  };
+  await fill();
   await page.$eval('input[name="website"]', (el) => { el.value = 'bot'; });
   await page.click('.gm-form__submit');
   await page.waitForTimeout(600);
   check('form: a filled honeypot shows success but sends nothing',
     posted === 0 && await page.$eval('.gm-form__status', (el) => el.dataset.state === 'ok'));
 
-  // Real submit reaches the endpoint.
-  await page.fill('input[name="full_name"]', 'Test Person');
-  await page.fill('input[name="phone"]', '6155550123');
-  await page.fill('input[name="email"]', 'test@example.com');
-  await page.fill('textarea[name="message"]', 'Hello');
+  await fill();
   await page.click('.gm-form__submit');
   await page.waitForTimeout(900);
   check('form: a valid submit POSTs to the endpoint and reports success',
@@ -356,18 +490,28 @@ if (!endpointBuilt) {
   check('contact page raises no script errors', errors.length === 0, errors.join(' | '));
   await ctx.close();
 
-  const bill = await open('/pay-my-bill/');
-  const bfields = await bill.page.$$eval('form.gm-form__form [name]', (els) => els.map((e) => e.name));
-  check('form: the billing form carries WPForms 3051\'s field set',
-    ['first_name', 'last_name', 'email', 'phone', 'address1', 'city', 'state', 'postal', 'country', 'invoice_number', 'amount_requested']
-      .every((n) => bfields.includes(n)), bfields.join(', '));
-  check('form: the billing form asks for no card details',
-    !/card|cvc|cvv|expiry|routing/i.test(bfields.join(' ')));
-  await bill.page.fill('input[name="amount_requested"]', '125.5');
-  await bill.page.waitForTimeout(250);
-  const total = await bill.page.$eval('[data-total-display]', (el) => el.textContent.trim());
-  check('form: the billing total recomputes from the amount', total === '$ 125.50', total);
-  await bill.ctx.close();
+  // The Gravity Forms keep their own markup and only change destination.
+  const gf = await open('/foundations-health-program-registration/');
+  const action = await gf.page.$eval('form[id^="gform_"]', (f) => f.getAttribute('action'));
+  check('form: the Gravity Forms markup is kept and only its action is repointed',
+    action.startsWith('https://example.test/')
+    && (await gf.page.$$('.gform_wrapper .gfield')).length > 5, action);
+  let gposted = 0;
+  await gf.page.route('**://example.test/**', (r) => { gposted++; r.fulfill({ status: 200, body: 'ok' }); });
+  await gf.page.fill('#input_8_14', 'Person');
+  await gf.page.fill('#input_8_12', 'test@example.com');
+  await gf.page.fill('#input_8_8', '1 Test St');
+  await gf.page.fill('#input_8_9', 'Nashville');
+  await gf.page.fill('#input_8_10', 'TN');
+  await gf.page.fill('#input_8_2', '150');
+  await gf.page.fill('#input_8_4', 'none');
+  await gf.page.fill('#input_8_6', 'Better health');
+  await gf.page.click('form[id^="gform_"] input[type="submit"], form[id^="gform_"] button[type="submit"]');
+  await gf.page.waitForTimeout(900);
+  check('form: a Gravity Forms submit reaches the endpoint instead of WordPress',
+    gposted === 1 && await gf.page.$eval('.gm-hosted-form__status', (el) => /Thanks/.test(el.textContent)),
+    String(gposted));
+  await gf.ctx.close();
 }
 
 /* --------------------------------------------------- links, assets, routing */
@@ -387,9 +531,16 @@ if (!endpointBuilt) {
   const redirects = new Set(JSON.parse(await readFile(path.join(ROOT, 'vercel.json'), 'utf8'))
     .redirects.map((r) => r.source.replace(/\/:.*$/, '')));
 
+  // Broken on WordPress too, and cloned as-is; see scripts/audit.mjs for the
+  // verification and the README for what each one is.
+  const KNOWN_BROKEN = new Set([
+    '/essential-oils/page/2/', '/essential-oils/page/3/', '/essential-oils/page/4/',
+    '/my-story/my-story-of-healing-revised/',
+  ]);
+
   const { ctx, page } = await open('/');
   const bad = [];
-  for (const p of [...built].slice(0, 200)) {
+  for (const p of built) {
     const links = await page.evaluate(async (target) => {
       const res = await fetch(target);
       const html = await res.text();
@@ -397,11 +548,12 @@ if (!endpointBuilt) {
       return [...doc.querySelectorAll('a[href]')].map((a) => a.getAttribute('href'));
     }, p);
     for (const href of links) {
-      if (!href || /^(https?:|mailto:|tel:|#|javascript:)/.test(href)) continue;
+      if (!href || /^(https?:|mailto:|tel:|#|javascript:|about:)/.test(href)) continue;
       const clean = href.split('#')[0].split('?')[0];
       if (!clean.startsWith('/')) continue;
       if (/\.(png|jpe?g|webp|gif|svg|pdf|css|js|ico|xml)$/i.test(clean)) continue;
       const withSlash = clean.endsWith('/') ? clean : clean + '/';
+      if (KNOWN_BROKEN.has(withSlash)) continue;
       if (built.has(withSlash) || files.has(clean)) continue;
       if (redirects.has(clean) || redirects.has(clean.replace(/\/$/, ''))) continue;
       bad.push(`${p} → ${href}`);
@@ -419,15 +571,15 @@ if (!endpointBuilt) {
     const res = await page.goto(ORIGIN + from, { waitUntil: 'domcontentloaded' });
     return { status: res.status(), url: new URL(page.url()).pathname };
   };
-  const t = await hit('/Testimonials');
-  check('routing: the mis-cased /Testimonials breadcrumb still lands on the page',
-    t.url === '/testimonials/', JSON.stringify(t));
-  const d = await hit('/dr-david-farnen');
-  check('routing: the staff pages redirect to /about-us/ as WordPress does',
-    d.url === '/about-us/', JSON.stringify(d));
+  const legacy = await hit('/healthy-diet/kale-breakfast-smoothie/');
+  check('routing: the old category permalinks redirect where WordPress redirects them',
+    legacy.url === '/recipes/kale-breakfast-smoothie/', JSON.stringify(legacy));
+  const paged = await hit('/blog/page/2/');
+  check('routing: /blog/page/2/ lands on the blog\'s second page',
+    paged.url === '/blog/2/', JSON.stringify(paged));
   const nf = await page.goto(ORIGIN + '/no-such-page-here/', { waitUntil: 'domcontentloaded' });
   check('routing: an unknown URL serves the site\'s own 404 template',
-    nf.status() === 404 && (await page.title()).length > 0, await page.title());
+    nf.status() === 404 && /Page not found|not be found|404/i.test(await page.content()), await page.title());
   await ctx.close();
 }
 {
@@ -435,13 +587,16 @@ if (!endpointBuilt) {
   const broken = await page.evaluate(() => [...document.images]
     .filter((img) => { const r = img.getBoundingClientRect(); return r.width > 0 && r.height > 0; })
     .filter((img) => img.complete && img.naturalWidth === 0)
-    .map((img) => img.currentSrc || img.src)
-    // This run blocks the third-party embed hosts, so their images cannot decode
-    // by construction. Only the site's own assets are under test here.
-    .filter((src) => !/zocdoc|threebestrated|leadconnectorhq|trustymail|googletagmanager/.test(src)));
+    .map((img) => img.currentSrc || img.src));
   // Playbook §3.10: assert on visible images only — offscreen carousel clones
   // legitimately never load.
   check('assets: every visible image on the home page decodes', broken.length === 0, broken.slice(0, 4).join(' | '));
+
+  const fonts = await page.evaluate(() => [...document.fonts]
+    .filter((f) => f.status === 'loaded')
+    .map((f) => f.family));
+  check('assets: the self-hosted Montserrat and Raleway faces load',
+    fonts.includes('Montserrat') && fonts.includes('Raleway'), [...new Set(fonts)].join(', '));
   await ctx.close();
 }
 

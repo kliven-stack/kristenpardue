@@ -114,7 +114,7 @@ const rewriteSrcset = (v) => v.split(',').map((part) => {
 
 const URL_ATTRS = ['src', 'href', 'data-src', 'poster', 'content', 'data-thumb', 'data-thumbnail', 'action'];
 
-function cleanFragment($, $el) {
+function cleanFragment($, $el, gfLogic = []) {
   // Scripts inside the ported markup are WordPress and Elementor plumbing that
   // src/scripts/elementor.js replaces — with two exceptions kept verbatim, both
   // marked below.
@@ -129,12 +129,18 @@ function cleanFragment($, $el) {
 
     if (!src || src.startsWith('data:')) { $s.remove(); return; }
 
-    // Third-party embeds that outlive WordPress keep their absolute URLs. The one
-    // on this site is ActiveCampaign's form loader on /contact-me/, and it sits
-    // inside the marked region above — so it ships only while the embed does, and
-    // goes with it the moment our own form replaces it. Mirroring it would not
-    // remove a dependency, only add a copy that goes stale.
-    if (/^https?:\/\//.test(src) && !src.startsWith(ORIGIN)) return;
+    // Third-party embeds that outlive WordPress keep their URLs. Two of them here:
+    // ActiveCampaign's form loader on /contact-me/, which sits inside the marked
+    // region above and so ships only while that embed does, and ThriveCart's
+    // checkout loader on /gi-mapping/. Mirroring either would not remove a
+    // dependency, only add a copy that goes stale.
+    //
+    // The `//host/path` spelling has to be handled here and not fall through to the
+    // same-origin branch below. ThriveCart's is written that way, and treating it as
+    // one of WordPress's own bundles dropped it — which cost the "GET STARTED"
+    // button the stylesheet that loader injects, leaving it an unstyled inline link
+    // 5px short of production's. The 900px comparison is what caught it.
+    if (/^(https?:)?\/\//.test(src) && !src.startsWith(ORIGIN)) return;
 
     // Same-origin scripts are WordPress's own bundles (jQuery, Elementor, Elementor
     // Pro, smartmenus, jquery.sticky, Swiper, Essential Addons, Ultimate Addons,
@@ -187,6 +193,19 @@ function cleanFragment($, $el) {
   // The popup's lead form is wrapped in markers so the page can swap in our own
   // static form when a Growthmap endpoint is configured (playbook §4b). The booking
   // calendars are left exactly as production serves them — see LEAD_FORMS above.
+  // Gravity Forms' conditional logic, rescued from the inline script we drop.
+  //
+  // The plugin serves every field visible and hides the dependent ones from JS on
+  // init, from a `window['gf_form_conditional_logic'][N]` blob. Exactly one rule
+  // exists on this site — field 150 on /patient-wellness-intake/ ("Other", the
+  // free-text box beside the alcohol select) shows only when field 149 is "Other" —
+  // and without it the clone renders that box permanently, 102px taller than
+  // production. The blob is parked on the wrapper for src/scripts/elementor.js to
+  // apply and to keep applying as the visitor types.
+  for (const [formId, logic] of gfLogic) {
+    $el.find(`#gform_wrapper_${formId}`).attr('data-gm-gf-logic', JSON.stringify(logic));
+  }
+
   for (const [selector, variant] of Object.entries(LEAD_FORMS)) {
     $el.find(selector).each((i, el) => {
       // Wrap the whole widget, so swapping in our form also drops the embed's
@@ -245,6 +264,16 @@ for (const file of files) {
   const raw = await readFile(path.join(HTML, file), 'utf8');
   const $ = cheerio.load(raw, { decodeEntities: false });
 
+  // Pulled from the raw HTML rather than the DOM: it lives in an inline script,
+  // and the keys in it are unquoted JS identifiers, so it needs a light rewrite
+  // before JSON can read it.
+  const gfLogic = [...raw.matchAll(/gf_form_conditional_logic'\]\[(\d+)\] = \{ logic: (\{[\s\S]*?\}), dependents:/g)]
+    .map(([, formId, blob]) => {
+      try { return [formId, JSON.parse(blob.replace(/([{,]\s*)(\d+)\s*:/g, '$1"$2":'))]; }
+      catch { console.warn('unparsed GF logic on', file); return null; }
+    })
+    .filter(Boolean);
+
   // --- stylesheet order: external handles and inline blocks, interleaved as authored
   const css = [];
   $('head link[rel="stylesheet"], head style, body link[rel="stylesheet"], body style').each((i, el) => {
@@ -302,7 +331,7 @@ for (const file of files) {
   const region = ($el, kind) => {
     if (!$el.length) return null;
     const id = $el.attr('data-elementor-id') || 'x';
-    const html = cleanFragment($, $el);
+    const html = cleanFragment($, $el, gfLogic);
     const name = `${kind}-${id}-${createHash('sha1').update(html).digest('hex').slice(0, 8)}`;
     if (!shared.has(name)) shared.set(name, html);
     return name;
@@ -313,7 +342,7 @@ for (const file of files) {
   const popupFrags = $popups.map((i, el) => region($(el), 'popup')).get();
 
   const contentHtml = $content.length
-    ? $content.map((i, el) => cleanFragment($, $(el))).get().join('\n')
+    ? $content.map((i, el) => cleanFragment($, $(el), gfLogic)).get().join('\n')
     : '';
   const contentName = `page-${slug}`;
   await writeFile(path.join(FRAG, `${contentName}.html`), contentHtml);
