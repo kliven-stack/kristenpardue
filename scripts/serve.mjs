@@ -26,7 +26,7 @@ const TYPES = {
  */
 const compileRedirect = (rule) => {
   const names = [];
-  const pattern = rule.source.replace(/\/$/, '').replace(/:([A-Za-z0-9_]+)(\*?)/g, (whole, name, star) => {
+  const pattern = rule.source.replace(/:([A-Za-z0-9_]+)(\*?)/g, (whole, name, star) => {
     names.push(name);
     return star ? '(.*)' : '([^/]+)';
   });
@@ -45,8 +45,14 @@ const rules = redirects.map(compileRedirect);
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
+  // Matched literally, exactly as Vercel matches it — no trailing-slash
+  // normalisation on either side. Being more forgiving here than production is
+  // how a whole class of broken redirects stayed invisible: every source written
+  // without a trailing slash 404s on Vercel for the slash form, which is the
+  // canonical form WordPress served and the one in Google's index. vercel.json
+  // now carries both spellings; this must stay strict so it cannot drift again.
   const hit = rules
-    .map((rule) => ({ rule, match: rule.regex.exec(url.pathname.replace(/\/$/, '')) }))
+    .map((rule) => ({ rule, match: rule.regex.exec(url.pathname) }))
     .find(({ rule, match }) => match && (rule.has ?? []).every((h) => h.type === 'query' && url.searchParams.has(h.key)));
   if (hit) {
     res.writeHead(hit.rule.permanent ? 308 : 307, { location: hit.rule.fill(hit.match) + url.search });

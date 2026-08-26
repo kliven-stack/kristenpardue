@@ -4,21 +4,40 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" },
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        }
       ]
     }
   ],
   "redirects": [
     { "source": "/elementor-3137", "destination": "/", "permanent": true },
+    { "source": "/elementor-3137/", "destination": "/", "permanent": true },
     { "source": "/foundations-old", "destination": "/foundations/", "permanent": true },
+    { "source": "/foundations-old/", "destination": "/foundations/", "permanent": true },
     { "source": "/shop", "destination": "/", "permanent": true },
+    { "source": "/shop/", "destination": "/", "permanent": true },
     { "source": "/my-account", "destination": "/", "permanent": true },
+    { "source": "/my-account/", "destination": "/", "permanent": true },
     { "source": "/checkout", "destination": "/", "permanent": true },
-
+    { "source": "/checkout/", "destination": "/", "permanent": true },
     { "source": "/sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/sitemap_index.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/wp-sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
@@ -26,24 +45,36 @@
     { "source": "/page-sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/category-sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/author-sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
-
     { "source": "/my-story/my-journey-to-healing", "destination": "/essential-oils/my-journey-to-healing/", "permanent": true },
+    { "source": "/my-story/my-journey-to-healing/", "destination": "/essential-oils/my-journey-to-healing/", "permanent": true },
     { "source": "/my-story/the-journey-to-healing", "destination": "/essential-oils/my-journey-to-healing/", "permanent": true },
+    { "source": "/my-story/the-journey-to-healing/", "destination": "/essential-oils/my-journey-to-healing/", "permanent": true },
     { "source": "/health/could-those-silver-fillings-in-your-mouth-be-dangerous", "destination": "/personal/could-those-silver-fillings-in-your-mouth-be-dangerous/", "permanent": true },
+    { "source": "/health/could-those-silver-fillings-in-your-mouth-be-dangerous/", "destination": "/personal/could-those-silver-fillings-in-your-mouth-be-dangerous/", "permanent": true },
     { "source": "/health/celiac-disease-vs-gluten-sensitivity-part-1", "destination": "/personal/celiac-disease-vs-gluten-sensitivity-part-1/", "permanent": true },
+    { "source": "/health/celiac-disease-vs-gluten-sensitivity-part-1/", "destination": "/personal/celiac-disease-vs-gluten-sensitivity-part-1/", "permanent": true },
     { "source": "/health/nutrient-packed-smoothie-recipe", "destination": "/recipes/nutrient-packed-smoothie-recipe/", "permanent": true },
+    { "source": "/health/nutrient-packed-smoothie-recipe/", "destination": "/recipes/nutrient-packed-smoothie-recipe/", "permanent": true },
     { "source": "/healthy-diet/sugar-101-the-truth-about-sugars-sweeteners", "destination": "/physical-health/nutrition/sugar-101-the-truth-about-sugars-sweeteners/", "permanent": true },
+    { "source": "/healthy-diet/sugar-101-the-truth-about-sugars-sweeteners/", "destination": "/physical-health/nutrition/sugar-101-the-truth-about-sugars-sweeteners/", "permanent": true },
     { "source": "/healthy-diet/health-benefits-of-homemade-chicken-broth-how-to-make-it", "destination": "/physical-health/infant-health/health-benefits-of-homemade-chicken-broth/", "permanent": true },
+    { "source": "/healthy-diet/health-benefits-of-homemade-chicken-broth-how-to-make-it/", "destination": "/physical-health/infant-health/health-benefits-of-homemade-chicken-broth/", "permanent": true },
     { "source": "/healthy-diet/kale-breakfast-smoothie", "destination": "/recipes/kale-breakfast-smoothie/", "permanent": true },
+    { "source": "/healthy-diet/kale-breakfast-smoothie/", "destination": "/recipes/kale-breakfast-smoothie/", "permanent": true },
     { "source": "/healthy-diet/gmos-how-theyre-destroying-your-health", "destination": "/physical-health/nutrition/gmos-how-theyre-destroying-your-health/", "permanent": true },
-
+    { "source": "/healthy-diet/gmos-how-theyre-destroying-your-health/", "destination": "/physical-health/nutrition/gmos-how-theyre-destroying-your-health/", "permanent": true },
     { "source": "/blog/page/:n", "destination": "/blog/:n/", "permanent": true },
-
+    { "source": "/blog/page/:n/", "destination": "/blog/:n/", "permanent": true },
     { "source": "/feed", "destination": "/", "permanent": true },
+    { "source": "/feed/", "destination": "/", "permanent": true },
     { "source": "/comments/feed", "destination": "/", "permanent": true },
+    { "source": "/comments/feed/", "destination": "/", "permanent": true },
     { "source": "/blog/feed", "destination": "/blog/", "permanent": true },
+    { "source": "/blog/feed/", "destination": "/blog/", "permanent": true },
     { "source": "/wp-json/:path*", "destination": "/", "permanent": true },
+    { "source": "/wp-json/:path*/", "destination": "/", "permanent": true },
     { "source": "/wp-admin/:path*", "destination": "/", "permanent": true },
+    { "source": "/wp-admin/:path*/", "destination": "/", "permanent": true },
     { "source": "/xmlrpc.php", "destination": "/", "permanent": true }
   ]
 }
