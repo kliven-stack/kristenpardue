@@ -12,8 +12,8 @@ export interface PageRecord {
   robots: string | null;
   bodyClass: string;
   /**
-   * The page's own viewport meta. /book-an-appointment/ is the one page built on
-   * Elementor's canvas template, whose head asks for `viewport-fit=cover`.
+   * The page's own viewport meta. /links/ is the one page built on Elementor's
+   * canvas template, whose head prints a different one from the theme's.
    */
   viewport: string;
   lang: string;
@@ -32,7 +32,7 @@ export interface PageRecord {
 
 export const pages = pagesData as PageRecord[];
 
-/** Raw Elementor markup, keyed by fragment name (`page-index`, `header-19-…`). */
+/** Raw Elementor markup, keyed by fragment name (`page-index`, `header-2135-…`). */
 const fragmentModules = import.meta.glob<string>('../fragments/*.html', {
   query: '?raw',
   import: 'default',
@@ -47,20 +47,17 @@ const fragments = new Map<string, string>(
 );
 
 /**
- * The GoHighLevel chat bubble the LeadConnector plugin prints into <head> on every
- * page, which every HTML parser then moves to the top of <body>.
- *
- * The site carries a *second*, hand-placed copy inside the footer template, so both
- * the element and its loader script exist twice on every page. That is production's
- * behaviour and it is reproduced, not tidied — see the README's bug register.
+ * Empty on this site — it carries no chat bubble of any kind. Kept for parity with
+ * the sibling clones: `npm run extract` writes the fragment either way, so adding
+ * one to WordPress before cutover is a re-extract rather than a code change.
  */
 export const chatWidgetHtml = fixFragment(fragments.get('chat-widget') ?? '', 'chat-widget');
 
 /**
- * The client's Google measurement stack, exactly as WordPress prints it: GTM
- * container GTM-5Z3BSXQ, GA4 G-PJWG0QD109, Ads AW-751377890, and GA4 G-RWPQB7M7TD
- * twice over, plus one tag configured with an empty id. Rendered behind
- * `PUBLIC_ANALYTICS`; see the README for the two defects in it.
+ * Also empty. There is no Google Tag Manager container, no GA4 property, no Ads
+ * tag and no Meta pixel anywhere on this site — the only tracking it carries is
+ * ActiveCampaign's own WordPress plugin, which dies with the install. Worth
+ * telling the client (README bug 14) rather than silently matching.
  */
 export const analyticsHead = fragments.get('analytics-head') ?? '';
 export const analyticsBody = fragments.get('analytics-body') ?? '';

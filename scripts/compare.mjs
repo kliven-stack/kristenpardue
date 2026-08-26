@@ -128,10 +128,11 @@ const PROBE = () => {
   // Zero-size nodes are skipped, and skipping them is what keeps the index stable.
   // These leaves are matched by position, so any node one side has and the other
   // does not shifts every index after it and turns one real difference into a
-  // hundred false ones. /pay-my-bill/ is the case in point: WPForms' phone-country
-  // JS builds a 247-item country list that is display:none on production and
-  // absent from the clone, which was enough to make the whole page below the form
-  // look wrong. Nothing that paints nothing can be a fidelity difference — and a
+  // hundred false ones. Gravity Forms is the case in point: it renders validation
+  // messages and sublabels that are display:none until they are needed, and a
+  // single one present on one side and not the other was enough to make the whole
+  // 40-field intake page below it look wrong. Nothing that paints nothing can be a
+  // fidelity difference — and a
   // node that is zero-size on one side but real on the other still shows up, as an
   // extra or a missing.
   let leafIndex = 0;

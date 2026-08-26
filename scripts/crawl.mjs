@@ -103,12 +103,12 @@ const run = async () => {
   const seen = new Set(queue);
   const manifest = [];
 
-  // Slugs already written, lowercased. WordPress answers 200 on a mis-cased slug
-  // (`/Testimonials` is linked from two breadcrumbs and serves /testimonials/ with
-  // that page's canonical), but a static host is case-sensitive and macOS's
-  // filesystem is not — left alone, the mis-cased fetch silently overwrites the
-  // real page's HTML with a copy of itself. Record it as the redirect it behaves
-  // like, so vercel.json can reproduce it, and never write a second file.
+  // Slugs already written, lowercased. WordPress answers 200 on a mis-cased slug and
+  // canonicalises it, but a static host is case-sensitive and macOS's filesystem is
+  // not — left alone, a mis-cased fetch silently overwrites the real page's HTML
+  // with a copy of itself. Record it as the redirect it behaves like, so vercel.json
+  // can reproduce it, and never write a second file. (No page on this site is linked
+  // that way; the guard is cheap and has fired on two of the sibling migrations.)
   const written = new Set();
 
   for (let i = 0; i < queue.length; i++) {

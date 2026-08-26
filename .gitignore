@@ -22,7 +22,12 @@ _extract/live-dom/
 _extract/compare-*.json
 _extract/dump-*.json
 _extract/spot-*.json
-_extract/probe/
+
+
+# `_extract/probe/` IS tracked: those scripts are the evidence behind every DOM
+# contract src/scripts/elementor.js reproduces, and the comments there point at
+# them by name. They read the live site, so they need no local state.
+_extract/probe/*.json
 
 # `_extract/crawl-manifest.json` and `_extract/assets.json` ARE tracked: they
 # record what the crawl found and what the mirror pulled, which is the provenance
