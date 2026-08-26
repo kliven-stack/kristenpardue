@@ -1264,28 +1264,50 @@ function initPopups() {
 /* ------------------------------------------------------------------ *
  * Entrance animations
  *
- * 251 elements on this site render with `elementor-invisible` and an `animation`
- * in `data-settings`; Elementor swaps in `animated <name>` when they scroll into
- * view, and the keyframes live in the per-animation stylesheets each page links.
- * Without this they stay invisible forever — this is the single largest source of
- * "the clone is blank below the fold" on an Elementor site.
+ * 251 elements on this site carry an `animation` in `data-settings`, most of them
+ * also rendering with `elementor-invisible`; Elementor swaps in `animated <name>`
+ * when they scroll into view, and the keyframes live in the per-animation
+ * stylesheets each page links. Without this the invisible ones stay invisible
+ * forever — the single largest source of "the clone is blank below the fold" on an
+ * Elementor site — and the rest never carry the class the live DOM has.
  *
  * With reduced motion the class is applied immediately and the animation is a
  * no-op, which is what matters: the element must never stay invisible.
  * ------------------------------------------------------------------ */
+/**
+ * Elementor resolves a responsive setting by walking from the active device down
+ * to desktop: at mobile it takes `<key>_mobile`, then `<key>_tablet`, then `<key>`.
+ * One element on this site needs it — the "CONTACT NOW" button on /consulting/,
+ * whose only animation is `_animation_mobile: fadeInUp`, so a desktop-only lookup
+ * left it without the `animated fadeInUp` class the live DOM carries.
+ */
+function deviceSetting(settings, key) {
+  const chain = deviceMode() === 'mobile'
+    ? [`${key}_mobile`, `${key}_tablet`, key]
+    : deviceMode() === 'tablet' ? [`${key}_tablet`, key] : [key];
+  for (const name of chain) {
+    const value = settings[name];
+    if (value !== undefined && value !== '') return value;
+  }
+  return undefined;
+}
+
+/** The animation this element wants on the current device, if any. */
+const animationOf = (el) => {
+  const s = settingsOf(el);
+  const name = deviceSetting(s, 'animation') ?? deviceSetting(s, '_animation');
+  return name && name !== 'none' ? name : null;
+};
+
 function initEntranceAnimations() {
-  const targets = [...document.querySelectorAll('.elementor-invisible[data-settings]')]
-    .filter((el) => {
-      const s = settingsOf(el);
-      const name = s.animation || s._animation;
-      return name && name !== 'none';
-    });
+  const targets = [...document.querySelectorAll('[data-settings]')].filter(animationOf);
   if (!targets.length) return;
 
   const reveal = (el) => {
+    const name = animationOf(el);
+    if (!name) return;
     const s = settingsOf(el);
-    const name = s.animation || s._animation;
-    const delay = Number(s.animation_delay || s._animation_delay || 0);
+    const delay = Number(deviceSetting(s, 'animation_delay') ?? deviceSetting(s, '_animation_delay') ?? 0);
     setTimeout(() => {
       el.classList.remove('elementor-invisible');
       el.classList.add('animated', name);
@@ -1338,6 +1360,30 @@ function initEntranceAnimations() {
 function revealGravityForms() {
   for (const wrapper of document.querySelectorAll('[id^="gform_wrapper_"]')) {
     if (wrapper.style.display === 'none') wrapper.style.removeProperty('display');
+  }
+}
+
+/**
+ * Ultimate Addons' Gravity Forms styler.
+ *
+ * Most of what the widget does is CSS, hung off the `uael-gf-*` classes already in
+ * the markup. One thing is not: its script wraps every `<select>` inside the form
+ * in `<span class="uael-gf-select-custom">`, which is what the stylesheet gives the
+ * custom arrow and its own box. All three selects on /patient-wellness-intake/ are
+ * wrapped on the live site.
+ *
+ * It is 10px per select, which sounds ignorable and is not — the country select
+ * sits inside the address field, and without the wrapper that field measured 526px
+ * against production's 536, and the page ran 10px short from there down. The 390px
+ * comparison is what caught it.
+ */
+function initGfStyler(widget) {
+  for (const select of widget.querySelectorAll('select')) {
+    if (select.parentElement?.classList.contains('uael-gf-select-custom')) continue;
+    const wrap = document.createElement('span');
+    wrap.className = 'uael-gf-select-custom';
+    select.replaceWith(wrap);
+    wrap.append(select);
   }
 }
 
@@ -1508,6 +1554,7 @@ const WIDGETS = {
   'media-carousel.default': initElementorCarousel,
   'toggle.default': initToggle,
   'uael-countdown.default': initCountdown,
+  'uael-gf-styler.default': initGfStyler,
 };
 
 /** Wire up every widget inside `root` — the document, or a popup once opened. */

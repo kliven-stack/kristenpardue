@@ -265,6 +265,22 @@ for (const width of widths) {
             else if (el.eCarousel) el.eCarousel.reset();
           }
         });
+        // /gi-mapping/'s "GET STARTED" buttons are styled by an async third-party
+        // loader (//tinder.thrivecart.com), which lands a few hundred ms after load
+        // — or, once in a few runs, not within the window at all. Wait for it on
+        // both sides rather than blocking it: blocking would have hidden the fact
+        // that the extract step was dropping the loader entirely, which is exactly
+        // the bug the 900px run found.
+        await tab.evaluate(async () => {
+          if (!document.querySelector('.thrivecart-button')) return;
+          for (let i = 0; i < 40; i++) {
+            const styled = [...document.querySelectorAll('.thrivecart-button')]
+              .every((el) => getComputedStyle(el).display === 'inline-block');
+            if (styled) return;
+            await new Promise((r) => setTimeout(r, 150));
+          }
+        });
+
         // Popup 2995 opens one second after load on every page, on both sides, and
         // covers the viewport. Dismiss it — and mark it dismissed for the rest of
         // the run — or every page is measured through a modal backdrop.
