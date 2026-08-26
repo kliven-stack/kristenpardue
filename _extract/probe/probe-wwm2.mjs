@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
+const p = await ctx.newPage();
+const seen = [];
+p.on('response', (r) => { if (/5\.22\.06/.test(r.url())) seen.push(r.status() + ' ' + r.url()); });
+p.on('requestfailed', (r) => { if (/5\.22\.06/.test(r.url())) seen.push('FAILED ' + r.failure()?.errorText + ' ' + r.url()); });
+p.on('console', (m) => { if (m.type() === 'error' && /5\.22|Mixed/i.test(m.text())) seen.push('CONSOLE ' + m.text().slice(0, 140)); });
+await p.goto('https://kristenpardue.com/work-with-me/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+await p.waitForTimeout(6000);
+console.log(seen.join('\n') || '(no request for that image at all)');
+console.log('src attr in live DOM:', await p.evaluate(() => document.querySelector('[data-id="e96cc91"] img')?.getAttribute('src')));
+await b.close();

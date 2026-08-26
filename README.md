@@ -242,13 +242,27 @@ it reproduces on any host because the block is at the URL, not the response.
 (the file is already mirrored). It changes what those two pages look like, which is
 why it is opt-in.
 
-**2. Seven more `http://` asset URLs in the compiled CSS, and 34 in post content.**
-Seven background images (`bg.jpg`, `diagonal-noise.png`, `gray.jpg`,
-`new-brash-gray2.png` and three `kristen-pardue_light-pink*.jpg`), plus 33 images
-and one PDF link inside posts. These are mixed *passive* content, which current browsers
-auto-upgrade, so they render on production and they render here — but any browser
-that blocks rather than upgrades loses them. All are mirrored under `public/`, so
-the upgraded request is served locally once the domain points at the clone.
+**2. Seven more `http://` asset URLs in the compiled CSS, and 34 in post content —
+and Chrome blocks some of them outright.** Seven background images in the compiled
+CSS (`bg.jpg`, `diagonal-noise.png`, `gray.jpg`, `new-brash-gray2.png` and three
+`kristen-pardue_light-pink*.jpg`), plus 33 images and one PDF link inside posts.
+
+I first wrote here that these are mixed *passive* content and therefore
+auto-upgraded, so they render on production and on the clone alike. **That is
+wrong, and measuring it proved it.** On `/work-with-me/` Chrome refuses rather than
+upgrades — `net::ERR_FAILED (mixed-content)` — and the `<img>` falls back to its
+`width="1190" height="954"` attributes, overflowing a 550px column and making that
+section 954px tall instead of 441. Sixteen images on that one page are blocked.
+
+The clone rewrote those URLs root-relative, so **its images load and production's do
+not**. That is the clone being correct rather than merely different, and it is left
+that way. `scripts/compare.mjs` detects the condition — an image that is `complete`
+with `naturalWidth === 0` on production but loaded on the clone — and reports the
+page as geometry-not-comparable with the count, rather than emitting sixty
+positional diffs that all trace to one blocked request.
+
+**This is worth fixing on the WordPress site itself**, not just here: those images
+are invisible to every visitor on production today.
 
 **3. Yoast's sitemap index advertises itself over `http://`.** `sitemap_index.xml`
 points at `http://kristenpardue.com/post-sitemap.xml` and the four child maps list

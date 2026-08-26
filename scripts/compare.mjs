@@ -110,6 +110,19 @@ const PROBE = () => {
         const img = el.tagName === 'IMG' ? el : el.querySelector?.('img');
         return !!img && (img.currentSrc || img.src || '').startsWith('data:');
       })(),
+      // Whether this node's geometry is being driven by an image that never
+      // loaded. Production asks for 34 of its post-content images over `http://`
+      // on an `https://` page, and Chrome blocks rather than upgrades them: the
+      // `<img>` then falls back to its width/height attributes and overflows its
+      // column. /work-with-me/ is the clear case — a 1190x954 screenshot rendering
+      // at full size inside a 550px column, making the section 954px tall instead
+      // of 441. The clone rewrote those URLs root-relative, so its images load.
+      // That is the clone being right, not different, and comparing the two
+      // geometries measures production's bug rather than our fidelity.
+      broken: (() => {
+        const img = el.tagName === 'IMG' ? el : el.querySelector?.('img');
+        return !!img && img.complete && img.naturalWidth === 0;
+      })(),
     };
   };
   for (const el of document.querySelectorAll('[data-id]')) {
@@ -263,6 +276,23 @@ for (const width of widths) {
         await tab.waitForTimeout(1200);
         await tab.evaluate(() => window.scrollTo(0, 0));
         await tab.waitForTimeout(800);
+        // Then wait for the images themselves, rather than assuming 2s of scrolling
+        // was enough. It is off localhost; it is not over the internet, and against
+        // the deployments the archive pages — ten post thumbnails each — measured
+        // mid-decode and reported a dozen geometry diffs that vanished on a re-run.
+        // A half-loaded image has no layout box yet, so this is the difference
+        // between measuring the page and measuring the network.
+        await tab.evaluate(async () => {
+          const pending = () => [...document.images].filter((i) => !i.complete);
+          for (let i = 0; i < 60 && pending().length; i++) {
+            await new Promise((r) => setTimeout(r, 250));
+          }
+          // decode() resolves only once the bitmap is ready to paint; `complete`
+          // can be true a frame earlier.
+          await Promise.all([...document.images]
+            .filter((i) => i.currentSrc)
+            .map((i) => i.decode().catch(() => {})));
+        });
         // Carousels autoplay on both sides; pin them to the first slide last of all
         // so the geometry diff is deterministic. Production runs real Swiper, the
         // clone runs the reimplementation in src/scripts/elementor.js — both are
@@ -328,6 +358,19 @@ for (const width of widths) {
         JSON.stringify({ live, clone }, null, 1));
     }
 
+    // One blocked image moves everything under it. Production asks for 34 of its
+    // post-content images over `http://` on an `https://` page and Chrome blocks
+    // them, so the `<img>` falls back to its width/height attributes and overflows
+    // its column — on /work-with-me/ that is a 1190x954 screenshot in a 550px
+    // column, 513px of phantom height with the whole page below shifted by it. The
+    // clone's images load, so its geometry is right and production's is not.
+    //
+    // Comparing them measures production's bug. The page is reported as
+    // not-geometry-comparable, with the count, instead of emitting sixty
+    // positional diffs that all trace to one broken request.
+    const blockedImages = Object.keys(live).filter((k) => live[k].broken && clone[k] && !clone[k].broken).length;
+    const GEOMETRY = new Set(['x', 'y', 'w', 'h']);
+
     const diffs = [];
     for (const key of Object.keys(live)) {
       const a = live[key], b = clone[key];
@@ -343,7 +386,7 @@ for (const width of widths) {
         continue;
       }
       if (key === '__page') {
-        if (Math.abs(a.h - b.h) > 24) diffs.push({ key, kind: 'page-height', live: a.h, clone: b.h });
+        if (!blockedImages && Math.abs(a.h - b.h) > 24) diffs.push({ key, kind: 'page-height', live: a.h, clone: b.h });
         continue;
       }
       // Production measured before its lazy image loaded: not a fidelity
@@ -351,7 +394,13 @@ for (const width of widths) {
       // site it renders exactly the width the clone does.
       if (a.placeholder && !b.placeholder) continue;
 
+      // Production's image is blocked as mixed content and ours is not (see
+      // `broken` in PROBE). Its box is the browser's broken-image fallback, not a
+      // layout we should reproduce.
+      if (a.broken && !b.broken) continue;
+
       for (const prop of ['x', 'y', 'w', 'h']) {
+        if (blockedImages && GEOMETRY.has(prop)) continue;
         const limit = prop === 'x' || prop === 'y' ? TOLERANCE.pos : TOLERANCE.size;
         if (Math.abs(a[prop] - b[prop]) > limit) diffs.push({ key, kind: prop, live: a[prop], clone: b[prop] });
       }
@@ -368,9 +417,10 @@ for (const width of widths) {
       }
     }
     const extra = Object.keys(clone).filter((k) => !(k in live));
-    report.push({ path: page.path, width, checked: Object.keys(live).length, diffs, extra });
+    report.push({ path: page.path, width, checked: Object.keys(live).length, diffs, extra, blockedImages });
     const flag = diffs.length ? 'DIFF' : ' ok ';
-    console.log(`${flag} ${String(width).padStart(4)} ${page.path.padEnd(56)} ${Object.keys(live).length} nodes, ${diffs.length} diffs${extra.length ? `, ${extra.length} extra` : ''}`);
+    const note = blockedImages ? `, geometry skipped (${blockedImages} image(s) blocked on production)` : '';
+    console.log(`${flag} ${String(width).padStart(4)} ${page.path.padEnd(56)} ${Object.keys(live).length} nodes, ${diffs.length} diffs${extra.length ? `, ${extra.length} extra` : ''}${note}`);
   }
   await ctx.close();
 }

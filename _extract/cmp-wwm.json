@@ -1,0 +1,26 @@
+[
+  {
+    "path": "/blog/",
+    "width": 1440,
+    "checked": 103,
+    "diffs": [],
+    "extra": [],
+    "blockedImages": 0
+  },
+  {
+    "path": "/foundations/",
+    "width": 1440,
+    "checked": 297,
+    "diffs": [],
+    "extra": [],
+    "blockedImages": 0
+  },
+  {
+    "path": "/work-with-me/",
+    "width": 1440,
+    "checked": 99,
+    "diffs": [],
+    "extra": [],
+    "blockedImages": 16
+  }
+]
