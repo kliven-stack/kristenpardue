@@ -12,10 +12,10 @@
  *   * `npm run compare` diffs the build against the live WordPress site, so it can
  *     only be meaningful against an unfixed build — which is the default here.
  *
- * Fixes that need information only the client has — which of the four staff pages
- * should come back as real pages rather than redirects, what the duplicated GA4
- * property is for, whether the two orphaned "copy" pages should be deleted — are
- * deliberately NOT here. See the README.
+ * Fixes that need information only the client has — whether the four orphaned
+ * drafts should be deleted or finished, whether the empty WooCommerce shop is
+ * meant to come back, what the dead "Thank You" popup was for — are deliberately
+ * NOT here. See the README.
  */
 
 /** Opt in with `PUBLIC_APPLY_FIXES=on`; the default build is a faithful clone. */
@@ -31,48 +31,29 @@ interface Rewrite {
 }
 
 const REWRITES: Rewrite[] = [
-  // ---------------------------------------------------------------- bug 15
+  // ---------------------------------------------------------------- bug 4
   {
-    match: /^page-blog__ingrown-toenail-treatment$/,
-    from: /\/wp-content\/uploads\/2020\/03\/Depositphotos_440978016_XL\.jpg 7952w, /,
-    to: '',
+    from: 'href="http://www.pbs.org/pov/foodinc/"',
+    to: 'href="https://www.pbs.org/pov/foodinc/"',
     why:
-      'The hero image on this post is a 7952x5304 stock photo weighing 11.8 MB, ' +
-      'offered as the largest srcset candidate with sizes="(max-width: 7952px) ' +
-      '100vw, 7952px" and fetchpriority="high". It renders 345 CSS px wide. On a ' +
-      'retina desktop (1440 @2x) the browser needs ~690px, finds nothing between ' +
-      'the 1536w variant and the original, and downloads all 11.8 MB — measured, ' +
-      'not assumed. Dropping the 7952w candidate leaves 1536w as the largest, ' +
-      'which is still more than twice the pixels the layout can use, so nothing ' +
-      'renders any differently.',
+      'A link in "GMOs: How they\'re destroying your health" is written without a ' +
+      'scheme — `href="www.pbs.org/pov/foodinc/"` — so the browser resolves it ' +
+      'against the current directory and it 404s as ' +
+      '/physical-health/nutrition/www.pbs.org/pov/foodinc/. Broken on WordPress ' +
+      'too; the clone reproduces it and this is the one-line fix.',
   },
   {
-    match: /^page-blog__ingrown-toenail-treatment$/,
-    from: 'src="/wp-content/uploads/2020/03/Depositphotos_440978016_XL.jpg"',
-    to: 'src="/wp-content/uploads/2020/03/Depositphotos_440978016_XL-1536x1025.jpg"',
-    why:
-      'The `src` fallback for the same image. Without this the 11.8 MB original is ' +
-      'still what any client ignoring srcset fetches.',
-  },
-
-  // ---------------------------------------------------------------- bug 2
-  {
-    from: 'href="/Testimonials"',
-    to: 'href="/testimonials/"',
-    why:
-      'Two hand-built Elementor breadcrumbs link "/Testimonials" — wrong case, no ' +
-      'trailing slash. WordPress answers 200 on it and canonicalises to ' +
-      '/testimonials/, but a static host is case-sensitive, so the clone carries a ' +
-      'redirect in vercel.json to keep the link alive. This rewrites the link ' +
-      'itself, which is the actual fix.',
+    from: 'href="www.pbs.org/pov/foodinc/"',
+    to: 'href="https://www.pbs.org/pov/foodinc/"',
+    why: 'The schemeless spelling itself — see above.',
   },
 ];
 
 /**
  * Whole elements to drop, by Elementor `data-id`.
  *
- * Empty: every layout defect found on this site is either a content decision for
- * the client or a markup issue fixed by a rewrite above.
+ * Empty: every layout defect found on this site is a content decision for the
+ * client rather than a markup one.
  */
 const REMOVE: { match: RegExp; ids: string[]; why: string }[] = [];
 
@@ -123,18 +104,26 @@ export interface MetaFix {
  * the entries here are the pages that invite indexing but should not.
  */
 const META: Record<string, MetaFix> = {
-  // Paginated archives duplicate the first page's title and description.
-  '/blog/page/2/': { robots: 'noindex, follow, max-image-preview:large' },
-  '/blog/page/3/': { robots: 'noindex, follow, max-image-preview:large' },
-  '/blog/category/uncategorized/page/2/': { robots: 'noindex, follow, max-image-preview:large' },
-  '/blog/category/uncategorized/page/3/': { robots: 'noindex, follow, max-image-preview:large' },
-  // An unlinked duplicate of /patient-forms/, left over from an edit.
-  '/patient-forms-copy/': { robots: 'noindex, nofollow' },
+  // Paginated archives duplicate the first page's title and description. There are
+  // 33 of them across the blog index, the twelve category archives and the author
+  // archive, so the rule is applied by pattern in fixPageMeta() rather than listed.
+
+  // Four drafts and leftovers that nothing links to but Yoast still advertises.
+  '/elementor-3137/': { robots: 'noindex, nofollow' },
+  '/foundations-old/': { robots: 'noindex, nofollow' },
+  '/schedule/': { robots: 'noindex, nofollow' },
+  '/30-days-health-follow-up/': { robots: 'noindex, nofollow' },
 };
+
+const PAGINATED = /\/(?:page\/)?\d+\/$/;
 
 export function fixPageMeta(path: string): MetaFix {
   if (!FIXES_ON) return {};
-  return META[path] ?? {};
+  if (META[path]) return META[path];
+  // /blog/2/ … /blog/10/ and /category/…/page/2/ — same title and description as
+  // page one, and no reason to be in an index.
+  if (PAGINATED.test(path)) return { robots: 'noindex, follow, max-image-preview:large' };
+  return {};
 }
 
 /**
@@ -148,7 +137,24 @@ export function fixSeoHead(html: string): string {
 /**
  * CSS-level corrections, inlined after the compiled Elementor sheets.
  *
- * Empty on purpose so far — filled in only if the client asks for one of the
- * layout defects in the README to be corrected.
+ * ---------------------------------------------------------------- bug 1
+ * Elementor's compiled kit CSS declares the site's script face with an insecure
+ * URL on a secure page:
+ *
+ *   @font-face { font-family: 'BrittanySignature';
+ *                src: url('http://kristenpardue.com/…/BrittanySignature.ttf') }
+ *
+ * A font is mixed *active* content, so Chrome blocks the request outright and every
+ * heading that asks for the family falls back to the next one in its stack. That is
+ * what production renders, and the clone reproduces it (see scripts/fetch-css.mjs).
+ * Re-declaring the face from this origin is the whole fix — the file is already
+ * mirrored at the path below — and it changes what /foundations/ and post 17 look
+ * like, which is why it is opt-in rather than applied.
  */
-export const FIX_CSS = '';
+export const FIX_CSS = FIXES_ON
+  ? `@font-face {
+  font-family: 'BrittanySignature';
+  src: url('/wp-content/uploads/2023/02/BrittanySignature.ttf') format('truetype');
+  font-display: swap;
+}`
+  : '';

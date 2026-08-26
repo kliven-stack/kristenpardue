@@ -20,10 +20,25 @@ const redirectSources = new Set(redirects.map((r) => r.source.replace(/\/$/, '')
  * fixed — anything not listed is a migration regression.
  */
 const BROKEN_ON_PRODUCTION = new Set([
-  // Nothing yet. Every internal link on this site resolves on production, and the
-  // two that a static host would break — `/Testimonials` (wrong case, no trailing
-  // slash) and `/services/page/2/` — are carried as redirects in vercel.json.
-  // Add an entry here only for a link that 404s on WordPress too.
+  // The Essential Oils page's posts widget paginates to a path WordPress does not
+  // route: /essential-oils/ is a *page*, and /essential-oils/<slug>/ is the
+  // permalink prefix for 30 posts, so the archive's "Page 2 / 3 / 4" links land on
+  // nothing. All three 404 on production, recorded by the crawl manifest.
+  '/essential-oils/page/2',
+  '/essential-oils/page/3',
+  '/essential-oils/page/4',
+  // Linked from five posts as "my story of healing" — an old permalink that was
+  // never redirected. 404 on production.
+  '/my-story/my-story-of-healing-revised',
+  // Written `href="www.pbs.org/pov/foodinc/"`, with no scheme, so the browser
+  // resolves it against the current post's directory. 404 on production, and one
+  // of the corrections offered in src/lib/fixes.ts.
+  '/www.pbs.org/pov/foodinc',
+  // The AAWP plugin's own stylesheet points at two star icons that are not in the
+  // plugin's build. 404 on production; nothing on the site uses the `wayl` rating
+  // style, so nothing renders differently.
+  '/wp-content/plugins/aawp/assets/dist/css/img/stars/wayl-inverted.svg',
+  '/wp-content/plugins/aawp/assets/dist/css/img/stars/wayl-inverted-active.svg',
 ]);
 
 /**
@@ -48,7 +63,10 @@ const dirOf = (file) => '/' + path.relative(DIST, path.dirname(file)).split(path
 
 const resolveTarget = async (url, from) => {
   const clean = url.split('#')[0].split('?')[0];
-  if (!clean || clean.startsWith('data:') || clean.startsWith('mailto:') || clean.startsWith('tel:')) return true;
+  // `about:blank` is Gravity Forms' hidden submission target on
+  // /patient-wellness-intake/ — a scheme, not a path.
+  if (!clean || clean.startsWith('data:') || clean.startsWith('mailto:')
+      || clean.startsWith('tel:') || clean.startsWith('about:')) return true;
   if (/^https?:\/\//.test(clean) || clean.startsWith('//')) {
     try { return !DEAD_HOSTS.has(new URL(clean, 'https://x.invalid').host); } catch { return true; }
   }

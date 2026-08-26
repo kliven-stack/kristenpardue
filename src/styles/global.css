@@ -16,25 +16,34 @@
 @source '../pages';
 
 @theme {
-  /* Elementor kit 6's global colours, verbatim from public/wp/css/elementor-post-6.css.
-     `primary` and `accent` are the same blue — the one on every CTA, the chat
-     bubble and the LeadConnector submit button. */
-  --color-brand-primary: #46b7df;
-  --color-brand-secondary: #363636;
-  --color-brand-text: #272727;
-  --color-brand-accent: #46b7df;
+  /* Elementor kit 2886's global colours, verbatim from
+     public/wp/css/elementor-post-2886.css. The first four are Elementor's stock
+     defaults, untouched by the client; the design's actual palette is in the
+     custom slots below them — the blush pink that carries every CTA and section
+     background, and its near-white tint. */
+  --color-brand-primary: #000000;
+  --color-brand-secondary: #54595f;
+  --color-brand-text: #7a7a7a;
+  --color-brand-accent: #61ce70;
+  --color-brand-blush: #f1ada2;
+  --color-brand-blush-tint: #fdf5f4;
+  --color-brand-sky: #6ec1e4;
+  --color-brand-indigo: #4054b2;
   --color-brand-white: #ffffff;
-  --color-brand-mist: #f2f2f2;
+  --color-brand-black: #000000;
 
-  /* Form field chrome, matched by ContactForm.astro to the two originals. */
-  --color-field-border: #d5d9dd;
-  --color-field-placeholder: #98a2b3;
+  /* Form field chrome, matched by ContactForm.astro to Gravity's own theme, which
+     is what the site's other forms are drawn in. */
+  --color-field-border: #cfcfcf;
+  --color-field-placeholder: #8c8f94;
 
-  /* Elementor kit typography globals — Poppins throughout, at three weights. */
-  --font-primary: 'Poppins', sans-serif;
-  --font-secondary: 'Poppins', sans-serif;
-  --font-text: 'Poppins', sans-serif;
-  --font-accent: 'Poppins', sans-serif;
+  /* Elementor kit typography globals — Montserrat for headings and buttons,
+     Raleway at 300 for body copy. (The kit also loads Oswald, Poiret One and
+     Sacramento for individual widgets.) */
+  --font-primary: 'Montserrat', sans-serif;
+  --font-secondary: 'Montserrat', sans-serif;
+  --font-text: 'Raleway', sans-serif;
+  --font-accent: 'Raleway', sans-serif;
 
   /* Elementor breakpoints — base is mobile, md = tablet, lg = desktop */
   --breakpoint-md: 768px;

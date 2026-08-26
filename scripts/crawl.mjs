@@ -87,17 +87,16 @@ const run = async () => {
   // not an out-of-scope note (playbook §1). Every entry is probed against
   // production and kept only if it really answers 200 with content.
   //
-  //   /author/ericpardue/          WordPress's automatic author archive. Yoast
-  //                                 lists it in author-sitemap.xml, so it is a seed
-  //                                 already; kept here so a Yoast change cannot
-  //                                 silently drop it.
-  //   /blog/page/2/                 the blog index's pagination. Yoast lists only
-  //                                 page 1; the rest are reachable by following the
-  //                                 archive's own pagination, which the
-  //                                 link-discovery pass below picks up from here.
+  //   /author/ericpardue/  WordPress's automatic author archive. Yoast lists it in
+  //                        author-sitemap.xml, so it is a seed already; kept here
+  //                        so a Yoast change cannot silently drop it.
+  //
+  // Deliberately not seeded: `/blog/page/2/`. WordPress answers 200 on it, but the
+  // blog index's own pagination links `/blog/2/` and Yoast canonicalises both to
+  // `/blog/`, so crawling it would add a byte-identical duplicate of a page the
+  // clone already builds. vercel.json redirects the spelling instead.
   const extras = [
     '/author/ericpardue/',
-    '/blog/page/2/',
     ...(process.env.EXTRAS || '').split(',').filter(Boolean),
   ].map((p) => ORIGIN + p);
   const queue = [...new Set([...seeds, ...extras])];

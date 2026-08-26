@@ -25,7 +25,7 @@ const TOLERANCE = { pos: 3, size: 3 };
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
 const pages = JSON.parse(await readFile(ROOT + 'src/data/pages.json', 'utf8'));
 // `--only=/path/` for one page, `--paths=/a/,/b/` for a set. The set is how the
-// narrower widths get measured without re-requesting all 77 pages from a live host
+// narrower widths get measured without re-requesting all 177 pages from a live host
 // that starts throttling after a few hundred hits — pick one page per template.
 const wanted = args.paths ? new Set(args.paths.split(',')) : null;
 const targets = args.only
@@ -153,7 +153,7 @@ let browser = await chromium.launch();
     const res = await tab.goto(origin + '/', { waitUntil: 'domcontentloaded', timeout: 60000 })
       .catch(() => null);
     const title = await tab.title().catch(() => '');
-    if (!res || !res.ok() || !/Cutting Edge Foot/i.test(title)) {
+    if (!res || !res.ok() || !/Kristen Pardue/i.test(title)) {
       console.error(`${label} origin ${origin} is not serving this site (title: ${JSON.stringify(title)}).`);
       console.error(label === 'clone' ? 'Run `npm run build && PORT=4331 npm run serve` first.' : '');
       process.exit(1);
@@ -176,38 +176,28 @@ for (const width of widths) {
     // Videos never settle and third-party embeds vary run to run; block both sides
     // identically so the geometry is comparable (playbook §7.6).
     await ctx.route('**/*.{mp4,mov,webm}', (r) => r.abort());
-    // /book-an-appointment/ paints a YouTube background video into its hero. The
-    // player keeps the load event pending long enough to blow a 90s timeout on the
-    // live side, so the page was being skipped entirely. The container it sits in
-    // is CSS-sized, so blocking the embed on both sides leaves the geometry
-    // comparable and the page measurable (playbook §7.6).
-    await ctx.route('**://*.youtube.com/**', (r) => r.abort());
-    await ctx.route('**://*.youtube-nocookie.com/**', (r) => r.abort());
-    await ctx.route('**://*.ytimg.com/**', (r) => r.abort());
-    await ctx.route('**://*.googletagmanager.com/**', (r) => r.abort());
-    await ctx.route('**://*.google-analytics.com/**', (r) => r.abort());
-    // The LeadConnector widgets render differently run to run and their host resets
-    // headless traffic at random, so both the forms and the chat bubble are blocked on
-    // both sides. The iframe boxes themselves are sized by the page's own CSS, so the
-    // geometry stays comparable — and while no Growthmap endpoint is configured both
-    // sides serve those same iframes anyway.
-    // KEEP_EMBEDS=1 lets the lead widgets load on both sides, to check the geometry
-    // they actually produce. Off by default: the host resets headless traffic at
-    // random, so a run that keeps them is only meaningful when it succeeds.
-    if (!process.env.KEEP_EMBEDS) await ctx.route('**://verified.trustymail.co/**', (r) => r.abort());
-    await ctx.route('**://*.leadconnectorhq.com/**', (r) => r.abort());
-    await ctx.route('**://links.sybrware.com/**', (r) => r.abort());
-    await ctx.route('**://*.googleapis.com/**', (r) => r.abort());
-    // Zocdoc's "Book Online" widget is the flakiest thing on the page. Its inline
-    // loader swaps the plain link for a hosted image button (238x30 instead of
-    // 177x60), and whether it wins the race varies per load — so an unblocked run
-    // reports ~550 diffs on the home page one time and 0 the next, purely from which
-    // side got the widget. Blocked on both sides, both render the same fallback link.
-    await ctx.route('**://*.zocdoc.com/**', (r) => r.abort());
-    // The ThreeBestRated award badge is deliberately NOT blocked. Both sides load
-    // it from the same external host and it is a fixed 200px SVG, so it measures
-    // identically — whereas blocking it leaves two differently-sized broken-image
-    // boxes, which is a difference the harness invented rather than found.
+    // No video and no analytics anywhere on this site; the routes below are the
+    // ones that actually matter here.
+    // The two third-party form embeds — ActiveCampaign on /contact-me/ and the
+    // LeadConnector subscribe iframe in popup 2995 — render differently run to run,
+    // and both hosts reset headless traffic at random from some networks. Blocked on
+    // both sides so the geometry is comparable; the boxes they sit in are sized by
+    // the page's own CSS either way, and while no Growthmap endpoint is configured
+    // both sides serve the same embeds anyway.
+    //
+    // KEEP_EMBEDS=1 lets them load on both sides, to check the geometry they
+    // actually produce. Off by default: a run that keeps them is only meaningful
+    // when it succeeds.
+    if (!process.env.KEEP_EMBEDS) {
+      await ctx.route('**://verified.trustymail.co/**', (r) => r.abort());
+      await ctx.route('**://*.leadconnectorhq.com/**', (r) => r.abort());
+      await ctx.route('**://*.activehosted.com/**', (r) => r.abort());
+      await ctx.route('**://challenges.cloudflare.com/**', (r) => r.abort());
+    }
+    // Production fetches its five families from Google on every page; the clone
+    // self-hosts them. Both sides must end up with the same metrics, so Google is
+    // left reachable — blocking it would leave production on fallback metrics and
+    // invent a text-wrapping difference on every page.
     return ctx;
   };
 
@@ -217,7 +207,7 @@ for (const width of widths) {
   for (const page of targets) {
     // Recycle the browser every few pages.
     //
-    // A single chromium held open across 77 pages x 2 origins grows until macOS
+    // A single chromium held open across 177 pages x 2 origins grows until macOS
     // kills it — which is how the first two full runs died, mid-run, and reported
     // the rest of the site as "failed 3x". Restarting it periodically keeps the
     // resident set flat and costs about 200ms each time.
@@ -246,15 +236,22 @@ for (const width of widths) {
         // Carousels autoplay on both sides; pin them to the first slide last of all
         // so the geometry diff is deterministic. Production runs real Swiper, the
         // clone runs the reimplementation in src/scripts/elementor.js — both are
-        // asked for loop index 0 with no transition. All three kinds are listed:
-        // Pro's testimonial carousel and reviews widget both autoplay every 5s, and
-        // the Essential Addons team strip every 2s, so leaving any of them free
-        // makes the sections below them unmeasurable.
+        // asked for loop index 0 with no transition. The home page's testimonial
+        // carousel moves every 14s and /faq/'s and /about/'s media carousels every
+        // 5s, so leaving any of them free makes the sections below them
+        // unmeasurable.
         await tab.evaluate(() => {
-          for (const el of document.querySelectorAll('.elementor-main-swiper, .eael-tm-carousel, [id^="swiper-container-"]')) {
+          for (const el of document.querySelectorAll('.elementor-main-swiper')) {
             if (el.swiper) { el.swiper.autoplay?.stop(); el.swiper.slideToLoop(0, 0); }
             else if (el.eCarousel) el.eCarousel.reset();
           }
+        });
+        // Popup 2995 opens one second after load on every page, on both sides, and
+        // covers the viewport. Dismiss it — and mark it dismissed for the rest of
+        // the run — or every page is measured through a modal backdrop.
+        await tab.evaluate(() => {
+          for (const modal of document.querySelectorAll('.elementor-popup-modal')) modal.remove();
+          document.body.classList.remove('dialog-body', 'dialog-lightbox-body', 'dialog-container', 'dialog-lightbox-container');
         });
         await tab.waitForTimeout(250);
         return await tab.evaluate(PROBE);
@@ -267,7 +264,7 @@ for (const width of widths) {
     //
     // A dead *browser* is a different thing from a dead page, and conflating them
     // wasted a whole run: chromium fell over early and the retry loop then churned
-    // through all 77 pages reporting "failed 3x" for each. If the browser has gone,
+    // through all 177 pages reporting "failed 3x" for each. If the browser has gone,
     // relaunch it and rebuild the context before counting the attempt as a failure.
     const attempt = async (origin) => {
       let last;

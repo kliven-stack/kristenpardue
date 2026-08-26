@@ -1104,14 +1104,6 @@
     "fromSitemap": true
   },
   {
-    "url": "https://kristenpardue.com/blog/page/2/",
-    "status": 200,
-    "finalUrl": "https://kristenpardue.com/blog/page/2/",
-    "slug": "blog__page__2",
-    "redirect": false,
-    "fromSitemap": false
-  },
-  {
     "url": "https://kristenpardue.com/xmlrpc.php/",
     "status": 403,
     "finalUrl": "https://kristenpardue.com/xmlrpc.php/",
@@ -1416,14 +1408,6 @@
     "fromSitemap": false
   },
   {
-    "url": "https://kristenpardue.com/blog/4/",
-    "status": 200,
-    "finalUrl": "https://kristenpardue.com/blog/4/",
-    "slug": "blog__4",
-    "redirect": false,
-    "fromSitemap": false
-  },
-  {
     "url": "https://kristenpardue.com/essential-oils/page/2/",
     "status": 404,
     "finalUrl": "https://kristenpardue.com/essential-oils/page/2/",
@@ -1444,6 +1428,14 @@
     "status": 404,
     "finalUrl": "https://kristenpardue.com/essential-oils/page/4/",
     "slug": "essential-oils__page__4",
+    "redirect": false,
+    "fromSitemap": false
+  },
+  {
+    "url": "https://kristenpardue.com/blog/4/",
+    "status": 200,
+    "finalUrl": "https://kristenpardue.com/blog/4/",
+    "slug": "blog__4",
     "redirect": false,
     "fromSitemap": false
   },

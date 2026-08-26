@@ -4,38 +4,41 @@
  *
  * Fully static: the browser POSTs FormData straight to `PUBLIC_CONTACT_ENDPOINT`,
  * so the site needs no adapter and no serverless function. These replace the two
- * forms the WordPress site carries, both of which die with it:
+ * third-party embeds the WordPress site carries:
  *
- *   contact  /contact-us/ — the LeadConnector ("Trustymail") widget
- *            N1bAmUSgYPq5niqW6jbS, "Contact Us Form", embedded as an iframe.
- *   billing  /pay-my-bill/ — WPForms form 3051, embedded by shortcode. It posts to
- *            `/wp-admin/admin-ajax.php`, so it stops working the moment WordPress
- *            is switched off.
+ *   contact    /contact-me/ — ActiveCampaign form 5, injected into the page by a
+ *              loader from kristenpardue16396.activehosted.com. Nothing about it is
+ *              in the served HTML.
+ *   subscribe  Elementor popup 2995, shown one second after load on every page — a
+ *              LeadConnector ("Trustymail") iframe, form FMxAdmW9fwWIvqjnE8bk,
+ *              "Subscribe - BSC".
  *
- * Both field sets were read off the originals rather than guessed — the contact one
- * out of the live widget's own document with `npm run form:inspect` (Full Name,
- * Phone, Email, Message, one terms checkbox, a #46B7DF SUBMIT at 4px radius, 36px
- * rows on white at 5px radius), the billing one out of the rendered WPForms markup
- * (Name split first/last, Email, Phone, a Bill-to address block, Invoice Number,
- * Amount Requested and a computed Total).
+ * Both field sets were read off the originals rather than guessed, with
+ * `npm run form:inspect`, which drives the live pages in headless Chrome and reads
+ * each widget's own document:
+ *
+ *   contact    First Name / Last Name / Email* / Phone, a three-option "I have a
+ *              question about…" select, and a Message box. 39px rows on white,
+ *              1px #979797 at 4px radius with 8px padding, IBM Plex Sans 14px, over
+ *              a #FFC1B8 Submit at 4px radius.
+ *   subscribe  Full Name / Email* / Phone. 55px rows, transparent on a 2px #FFC1B8
+ *              border at 0 radius with 15px/20px padding, Roboto 14px, over a 51px
+ *              #FFC1B8 Submit, white, 0 radius, Roboto 17px/600.
  *
  * Deliberate departures, all accessibility or correctness fixes:
- *   * every field gets a real <label> — the LeadConnector widget labels by
- *     placeholder only, which is not an accessible name;
- *   * the fields the widget marks with an asterisk are actually `required`
- *     (it renders the asterisk but sets `required` on nothing);
- *   * the phone field is a plain `tel` input rather than the widget's country
- *     picker, which is a JS component we are not shipping.
- *
- * No payment gateway is wired to the billing form on the WordPress site either —
- * no Stripe, Square or Authorize.net asset loads anywhere — so it collects billing
- * details and an amount, never card data. This reproduces that exactly: there is no
- * card field here, and there must not be one without a real gateway behind it.
+ *   * the subscribe widget labels by placeholder only, which is not an accessible
+ *     name, so its labels are real `<label>`s kept out of the picture;
+ *   * the field each widget marks with an asterisk is actually `required` (both
+ *     render the asterisk and set `required` on nothing but the email);
+ *   * the phone fields are plain `tel` inputs rather than the widgets' country
+ *     pickers, which are JS components we are not shipping;
+ *   * neither replacement carries the ActiveCampaign form's reCAPTCHA — that is
+ *     Growthmap's side of the endpoint to manage (playbook §4b), not the page's.
  */
 import { CONTACT_ENDPOINT } from '../config';
 
 interface Props {
-  variant: 'contact' | 'billing';
+  variant: 'contact' | 'subscribe';
   /** Names the region, so ids stay unique if a form ever renders twice on a page. */
   region: string;
 }
@@ -45,50 +48,37 @@ const { variant, region } = Astro.props as Props;
 interface Field {
   name: string;
   tag: 'input' | 'textarea' | 'select';
-  type?: string;
+  type?: 'text' | 'email' | 'tel';
   label: string;
   placeholder?: string;
   autocomplete?: string;
   required?: boolean;
-  /** Renders two inputs side by side (WPForms' name and address rows). */
+  /** Renders two inputs side by side (the contact form's name row). */
   half?: boolean;
-  step?: string;
-  inputmode?: string;
+  options?: string[];
 }
 
 const CONTACT_FIELDS: Field[] = [
-  { name: 'full_name', tag: 'input', type: 'text', label: 'Full Name', placeholder: 'Full Name', autocomplete: 'name', required: true },
-  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', placeholder: 'Phone', autocomplete: 'tel', required: true },
+  { name: 'firstname', tag: 'input', type: 'text', label: 'First Name', placeholder: 'Type your first name', autocomplete: 'given-name', half: true },
+  { name: 'lastname', tag: 'input', type: 'text', label: 'Last Name', placeholder: 'Type your last name', autocomplete: 'family-name', half: true },
+  { name: 'email', tag: 'input', type: 'email', label: 'Email', placeholder: 'Type your email', autocomplete: 'email', required: true },
+  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', placeholder: 'Type your phone number', autocomplete: 'tel' },
+  {
+    name: 'enquiry', tag: 'select', label: 'I have a question about...',
+    // Verbatim from the live widget, leading blank option included.
+    options: ['', 'Signing up for Essential oils', 'Health or Business Consultation', 'Speaking inquiry'],
+  },
+  { name: 'message', tag: 'textarea', label: 'Message', placeholder: 'Questions or comments?' },
+];
+
+const SUBSCRIBE_FIELDS: Field[] = [
+  { name: 'full_name', tag: 'input', type: 'text', label: 'Full Name', placeholder: 'Full Name', autocomplete: 'name' },
   { name: 'email', tag: 'input', type: 'email', label: 'Email', placeholder: 'Email', autocomplete: 'email', required: true },
-  { name: 'message', tag: 'textarea', label: 'Message', placeholder: 'Message', required: true },
+  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', placeholder: 'Phone', autocomplete: 'tel' },
 ];
 
-const BILLING_FIELDS: Field[] = [
-  { name: 'first_name', tag: 'input', type: 'text', label: 'First', autocomplete: 'given-name', required: true, half: true },
-  { name: 'last_name', tag: 'input', type: 'text', label: 'Last', autocomplete: 'family-name', required: true, half: true },
-  { name: 'email', tag: 'input', type: 'email', label: 'Email', autocomplete: 'email', required: true },
-  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', autocomplete: 'tel', required: true },
-  { name: 'address1', tag: 'input', type: 'text', label: 'Address Line 1', autocomplete: 'address-line1', required: true },
-  { name: 'address2', tag: 'input', type: 'text', label: 'Address Line 2', autocomplete: 'address-line2' },
-  { name: 'city', tag: 'input', type: 'text', label: 'City', autocomplete: 'address-level2', required: true, half: true },
-  { name: 'state', tag: 'input', type: 'text', label: 'State / Province / Region', autocomplete: 'address-level1', required: true, half: true },
-  { name: 'postal', tag: 'input', type: 'text', label: 'Postal Code', autocomplete: 'postal-code', required: true, half: true },
-  { name: 'country', tag: 'input', type: 'text', label: 'Country', autocomplete: 'country-name', required: true, half: true },
-  { name: 'invoice_number', tag: 'input', type: 'number', label: 'Invoice Number', required: true },
-  { name: 'amount_requested', tag: 'input', type: 'text', label: 'Amount Requested', required: true, inputmode: 'decimal' },
-];
-
-const FIELDS = variant === 'contact' ? CONTACT_FIELDS : BILLING_FIELDS;
-const FORM_NAME = variant === 'contact' ? 'Contact Us Form' : 'Pay My Bill';
-const SUBMIT_TEXT = variant === 'contact' ? 'SUBMIT' : 'Submit';
-
-/**
- * The LeadConnector widget's single consent checkbox, verbatim. It is not required
- * on the widget, and it is not required here.
- */
-const CONSENT = variant === 'contact'
-  ? 'I agree to terms & conditions provided by the company. By providing my phone number, I agree to receive text messages from the business.'
-  : null;
+const FIELDS = variant === 'contact' ? CONTACT_FIELDS : SUBSCRIBE_FIELDS;
+const FORM_NAME = variant === 'contact' ? 'Contact Me' : 'Subscribe - BSC';
 
 const id = (name: string) => `gm-${region}-${variant}-${name}`;
 ---
@@ -111,8 +101,8 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
           field.half && 'gm-form__field--half',
           field.tag === 'textarea' && 'gm-form__field--area',
         ]}>
-          <label class:list={['gm-form__label', variant === 'contact' && 'gm-form__label--hidden']} for={id(field.name)}>
-            {field.label}{field.required && <span class="gm-form__req" aria-hidden="true"> *</span>}
+          <label class:list={['gm-form__label', variant === 'subscribe' && 'gm-form__label--hidden']} for={id(field.name)}>
+            {field.label}{field.required && <span class="gm-form__req" aria-hidden="true">*</span>}
           </label>
           {field.tag === 'textarea' ? (
             <textarea
@@ -121,6 +111,10 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
               placeholder={field.placeholder}
               required={field.required}
             />
+          ) : field.tag === 'select' ? (
+            <select id={id(field.name)} name={field.name} required={field.required}>
+              {field.options?.map((option) => <option value={option}>{option}</option>)}
+            </select>
           ) : (
             <input
               id={id(field.name)}
@@ -128,33 +122,12 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
               type={field.type}
               placeholder={field.placeholder}
               autocomplete={field.autocomplete}
-              inputmode={field.inputmode}
               required={field.required}
-              class:list={[field.type === 'email' && variant === 'contact' && 'gm-form__input--email']}
             />
           )}
         </div>
       ))}
-
-      {/* WPForms computes the total from the payment field and mirrors it into a
-          read-only input. Reproduced by src/scripts/elementor.js. */}
-      {variant === 'billing' && (
-        <div class="gm-form__field gm-form__field--total">
-          <label class="gm-form__label" for={id('total')}>
-            Total<span class="gm-form__req" aria-hidden="true"> *</span>
-          </label>
-          <div class="gm-form__total" data-total-display>$ 0.00</div>
-          <input id={id('total')} name="total" type="text" readonly value="$0.00" data-total-value />
-        </div>
-      )}
     </div>
-
-    {CONSENT && (
-      <div class="gm-form__consent">
-        <input type="checkbox" id={id('terms')} name="terms_and_conditions" value="yes" />
-        <label for={id('terms')}>{CONSENT}</label>
-      </div>
-    )}
 
     {/* Honeypot — hidden from people, irresistible to bots. */}
     <div class="gm-form__hp" aria-hidden="true">
@@ -165,7 +138,7 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
     </div>
 
     <div class="gm-form__submit-row">
-      <button type="submit" class="gm-form__submit">{SUBMIT_TEXT}</button>
+      <button type="submit" class="gm-form__submit">Submit</button>
     </div>
 
     <p class="gm-form__status" role="status" aria-live="polite"></p>
@@ -173,11 +146,6 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
 </div>
 
 <style>
-  /* The contact values were measured inside the live LeadConnector widget's own
-     document: 36px rows on white at 5px radius with 8px/15px padding, Inter 12px,
-     a 108px message box, and a 47px #46B7DF submit at 4px radius. The billing
-     values come from the rendered WPForms markup, which the Elementor page styles
-     with the kit's Poppins. */
   .gm-form {
     width: 100%;
     box-sizing: border-box;
@@ -206,17 +174,16 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
   .gm-form__label {
     display: block;
     margin-bottom: 6px;
-    font-family: 'Poppins', sans-serif;
+    font-family: 'IBM Plex Sans', Helvetica, sans-serif;
     font-size: 14px;
-    font-weight: 500;
-    line-height: 1.4;
-    color: #272727;
+    line-height: 1.6;
+    color: #333;
   }
 
   .gm-form__req { color: #d93025; }
 
   /* The LeadConnector widget shows no labels at all — placeholders only — so the
-     contact form's stay in the accessibility tree and out of the picture. */
+     subscribe form's stay in the accessibility tree and out of the picture. */
   .gm-form__label--hidden,
   .gm-form__hp {
     position: absolute;
@@ -230,52 +197,55 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
   .gm-form__form input[type='text'],
   .gm-form__form input[type='email'],
   .gm-form__form input[type='tel'],
-  .gm-form__form input[type='number'],
+  .gm-form__form select,
   .gm-form__form textarea {
     display: block;
     width: 100%;
     box-sizing: border-box;
     margin: 0;
-    padding: 8px 15px;
-    font-family: 'Poppins', sans-serif;
+    padding: 8px;
+    font-family: 'IBM Plex Sans', Helvetica, sans-serif;
     font-size: 14px;
-    line-height: 20px;
-    color: #272727;
+    line-height: 1.6;
+    color: #333;
     background: #fff;
-    border: 1px solid #d5d9dd;
-    border-radius: 5px;
+    border: 1px solid #979797;
+    border-radius: 4px;
   }
 
-  .gm-form--contact .gm-form__form input,
-  .gm-form--contact .gm-form__form textarea {
-    font-family: 'Inter', 'Poppins', sans-serif;
-    font-size: 12px;
-    min-height: 36px;
+  /* The widget's one un-rounded control, and its own darker border. */
+  .gm-form__form select {
+    padding: 8px 16px;
+    border-color: #666;
+    border-radius: 0;
+  }
+
+  .gm-form__form textarea {
+    height: 60px;
+    resize: vertical;
+  }
+
+  /* The LeadConnector subscribe widget is drawn quite differently: taller rows,
+     transparent fill, a 2px blush border and square corners. */
+  .gm-form--subscribe .gm-form__form input {
+    min-height: 55px;
+    padding: 15px 20px;
+    font-family: Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: transparent;
+    border: 2px solid #ffc1b8;
+    border-radius: 0;
   }
 
   .gm-form__form input::placeholder,
   .gm-form__form textarea::placeholder {
-    color: #98a2b3;
+    color: #8c8f94;
     opacity: 1;
   }
 
-  /* The widget draws a mail glyph inside the email field and pads the text past it. */
-  .gm-form__input--email {
-    padding-left: 36px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='4' width='20' height='16' rx='2'/%3E%3Cpath d='m22 7-10 6L2 7'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: 12px center;
-    background-size: 16px 16px;
-  }
-
-  .gm-form__form textarea {
-    height: 108px;
-    resize: vertical;
-  }
-
   .gm-form__form input:focus-visible,
+  .gm-form__form select:focus-visible,
   .gm-form__form textarea:focus-visible {
-    outline: 2px solid #46b7df;
+    outline: 2px solid #f1ada2;
     outline-offset: 1px;
   }
 
@@ -286,79 +256,48 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
     border-color: #d93025;
   }
 
-  .gm-form__total {
-    padding: 8px 0;
-    font-family: 'Poppins', sans-serif;
-    font-size: 18px;
-    font-weight: 600;
-    color: #272727;
-  }
-
-  /* WPForms keeps the mirrored input in the DOM but out of sight. */
-  .gm-form__field--total input { display: none; }
-
-  .gm-form__consent {
-    display: flex;
-    align-items: flex-start;
-    margin-bottom: 8px;
-  }
-
-  .gm-form__consent input {
-    flex: none;
-    width: 15px;
-    height: 15px;
-    margin: 3px 0 0;
-    accent-color: #46b7df;
-  }
-
-  .gm-form__consent label {
-    margin-left: 10px;
-    font-family: 'Poppins', sans-serif;
-    font-size: 12px;
-    line-height: 1.5;
-    color: #272727;
-  }
-
   .gm-form__submit-row { margin-top: 15px; }
 
   /* `:focus` is pinned to the resting look on purpose: the Hello theme styles every
      bare `button:hover`/`:focus` with its own accent colour, which would repaint the
-     widget's blue. `:focus-visible` still shows. */
+     widget's blush. `:focus-visible` still shows. */
   .gm-form__submit,
   .gm-form__submit:hover,
   .gm-form__submit:focus {
-    display: block;
-    width: 100%;
-    height: 47px;
-    padding: 12px 10px;
-    font-family: 'Poppins', sans-serif;
+    display: inline-block;
+    min-height: 41px;
+    padding: 10px 22px;
+    font-family: 'IBM Plex Sans', Helvetica, sans-serif;
     font-size: 14px;
-    font-weight: 600;
-    line-height: 23px;
+    font-weight: 400;
     color: #fff;
     text-align: center;
-    background: #46b7df;
+    background: #ffc1b8;
     border: 0;
     border-radius: 4px;
     cursor: pointer;
   }
 
-  .gm-form--billing .gm-form__submit,
-  .gm-form--billing .gm-form__submit:hover,
-  .gm-form--billing .gm-form__submit:focus {
-    width: auto;
-    min-width: 160px;
-    padding: 12px 28px;
+  .gm-form--subscribe .gm-form__submit,
+  .gm-form--subscribe .gm-form__submit:hover,
+  .gm-form--subscribe .gm-form__submit:focus {
+    display: block;
+    width: 100%;
+    min-height: 51px;
+    font-family: Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    border-radius: 0;
   }
 
-  .gm-form__submit:hover { background: #2f9fc7; }
-  .gm-form__submit:focus-visible { outline: 2px solid #272727; outline-offset: 2px; }
+  .gm-form__submit:hover { background: #f1ada2; }
+  .gm-form__submit:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
   .gm-form__submit[disabled] { opacity: 0.6; cursor: progress; }
 
   .gm-form__status {
     margin: 12px 0 0;
     min-height: 1.4em;
-    font-family: 'Poppins', sans-serif;
+    font-family: 'IBM Plex Sans', Helvetica, sans-serif;
     font-size: 14px;
     color: inherit;
   }
@@ -370,9 +309,10 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
 <script>
   /**
    * Delegated and registered exactly once. Astro inlines a component's script per
-   * instance, so without the guard two handlers would race on one submit if a page
-   * ever carried both forms: the first reports success and resets the form, the
-   * second then clears that message and re-validates the now-empty fields.
+   * instance, so without the guard two handlers would race on one submit on any
+   * page carrying both forms — which, since the subscribe popup is attached to
+   * every page, means /contact-me/. The first reports success and resets the form,
+   * the second then clears that message and re-validates the now-empty fields.
    */
   const w = window as unknown as { __gmFormBound?: boolean };
   if (!w.__gmFormBound) {
@@ -407,7 +347,7 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
       }
 
       if (!endpoint) {
-        say('This form is not connected yet. Please call or email us instead.', 'error');
+        say('This form is not connected yet. Please email us instead.', 'error');
         return;
       }
 
@@ -422,7 +362,7 @@ const id = (name: string) => `gm-${region}-${variant}-${name}`;
         form.dispatchEvent(new Event('gm:reset'));
         say('Thanks — we will be in touch shortly.', 'ok');
       } catch {
-        say('Sorry, something went wrong. Please try again or call us.', 'error');
+        say('Sorry, something went wrong. Please try again or email us.', 'error');
       } finally {
         submit.disabled = false;
         submit.textContent = original;

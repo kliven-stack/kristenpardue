@@ -10,7 +10,7 @@
 import type { PageRecord } from '../lib/pages';
 import { fragment, chatWidgetHtml, analyticsHead, analyticsBody } from '../lib/pages';
 import PageContent from '../components/PageContent.astro';
-import { CHAT_WIDGET, ANALYTICS, WEBFONTS } from '../config';
+import { CHAT_WIDGET, ANALYTICS, WEBFONTS, CONTACT_ENDPOINT } from '../config';
 import { FIXES_ON, FIX_CSS, fixPageMeta, fixSeoHead } from '../lib/fixes';
 import '../styles/global.css';
 
@@ -36,33 +36,34 @@ const description = meta.description ?? page.description;
 const robots = meta.robots ?? page.robots;
 
 /**
- * Elementor's Google-font stylesheets, self-hosted by scripts/build-fonts.mjs.
- * On by default, because that is what production renders.
+ * The five Google families, self-hosted by scripts/build-fonts.mjs. On by default,
+ * because that is what production renders — it just fetches them from Google.
  */
 const webfonts = WEBFONTS !== 'off';
-const css = webfonts ? page.css : page.css.filter((c) => !c.name.startsWith('elementor-gf-local-'));
+const css = webfonts ? page.css : page.css.filter((c) => !c.name.startsWith('elementor-gf-'));
 
 /**
- * The faces above the fold on every page, from Elementor's own local Google Fonts
- * files. Kit 6 sets Poppins throughout — 600 for headings, 500 for buttons and the
- * nav, 400 for body copy — so all three latin faces are wanted immediately.
- * Preloading them removes the swap flash the WordPress site shows.
+ * The two faces above the fold on every page: kit 2886 sets Montserrat for headings
+ * and buttons and Raleway 300 for body copy, so both latin uprights are wanted
+ * immediately. Google now ships both as variable fonts, one file per subset, so
+ * this is two requests rather than one per weight. Preloading them removes the swap
+ * flash — which production has and the clone does not need to reproduce, because
+ * production's is a symptom of the third-party round trip we removed.
  */
 const PRELOAD_FONTS = webfonts
   ? [
-      '/wp/fonts/poppins-pxieyp8kv8jhgfvrjjfecg.woff2',
-      '/wp/fonts/poppins-pxibyp8kv8jhgfvrlgt9z1xlfq.woff2',
-      '/wp/fonts/poppins-pxibyp8kv8jhgfvrlej6z1xlfq.woff2',
+      '/wp/fonts/JTUSjIg1_i6t8kCHKm459WlhyyTh89Y.woff2',
+      '/wp/fonts/1Ptug8zYS_SKggPNyC0IT4ttDfA.woff2',
     ]
   : [];
 ---
 
 <!doctype html>
-<html lang={page.lang}>
+<html lang={page.lang} data-contact-endpoint={CONTACT_ENDPOINT || undefined}>
   <head>
     <meta charset="UTF-8" />
-    {/* Carried per page: /book-an-appointment/ is built on Elementor's canvas
-        template, whose head asks for `viewport-fit=cover`. */}
+    {/* Carried per page: /links/ is built on Elementor's canvas template, whose
+        head prints a different viewport from the theme's. */}
     <meta name="viewport" content={page.viewport} />
     <link rel="profile" href="https://gmpg.org/xfn/11" />
     {robots && <meta name="robots" content={robots} />}
@@ -71,9 +72,8 @@ const PRELOAD_FONTS = webfonts
     <link rel="canonical" href={canonical} />
     <Fragment set:html={seoHead} />
 
-    {/* The client's Google tags, verbatim. WordPress prints these into <head>, and
-        so does the clone — unlike production, where its own `<chat-widget>` in
-        <head> ends the head early and pushes four of the six into <body>. */}
+    {/* Inert on this site — there is no tag of any kind on it. Kept so that adding
+        one is a re-extract rather than a code change; see src/config.ts. */}
     {ANALYTICS && analyticsHead && <Fragment set:html={analyticsHead} />}
 
     {PRELOAD_FONTS.map((href) => (
@@ -82,8 +82,6 @@ const PRELOAD_FONTS = webfonts
 
     {css.map((sheet) => <link rel="stylesheet" href={`/wp/css/${sheet.name}.css`} />)}
 
-    {/* All four icon links and the tile, in <head> where WordPress meant them to be
-        — production loses three of them to the parser. */}
     {page.favicons.map((icon) => (
       <link rel={icon.rel} href={icon.href} {...(icon.sizes ? { sizes: icon.sizes } : {})} />
     ))}
@@ -101,8 +99,6 @@ const PRELOAD_FONTS = webfonts
       <a class="skip-link screen-reader-text" href="#content">Skip to content</a>
     )}
 
-    {/* WordPress prints this into <head>; every parser moves it here, which is where
-        production's DOM has it too. */}
     {CHAT_WIDGET && chatWidgetHtml && <Fragment set:html={chatWidgetHtml} />}
 
     {page.header && <Fragment set:html={fragment(page.header)} />}
@@ -111,9 +107,23 @@ const PRELOAD_FONTS = webfonts
       <PageContent html={fragment(page.content)} />
     </slot>
 
-    {/* A plain fragment: unlike the sibling clones, this site's footer carries no
-        form — only the second `<chat-widget>` copy, which rides along verbatim. */}
     {page.footer && <Fragment set:html={fragment(page.footer)} />}
+
+    {/* Popup templates.
+        Elementor keeps a popup out of the document until something opens it —
+        scripts/inspect-live.mjs finds zero `[data-elementor-type="popup"]` nodes in
+        the live pre-open DOM of every page probed — so they are parked in
+        <template> elements, whose content is not in the DOM tree at all.
+        src/scripts/elementor.js clones one in, and builds the dialog wrapper around
+        it, when its trigger fires: popup 2995 one second after load (at most once
+        per visitor), popup 2974 from the `#elementor-action:…` link on
+        /favorite-products/, and popup 3170 never, because nothing on the site
+        triggers it. */}
+    {page.popups.map((name) => (
+      <template class="gm-popup">
+        <PageContent html={fragment(name)} region={name} />
+      </template>
+    ))}
 
     <script src="../scripts/elementor.js"></script>
   </body>
