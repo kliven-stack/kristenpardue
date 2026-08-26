@@ -107,8 +107,6 @@ The pieces it drives:
 `src/`
 
 ```
-components/ContactForm.astro   our static replacement for the two third-party embeds
-components/PageContent.astro   renders a fragment, swapping a marked embed for the above
 layouts/BaseLayout.astro       <head> cascade, body classes, popup <template>s
 lib/pages.ts                   pages.json + the raw fragments, as one API
 lib/fixes.ts                   corrections to the original's own bugs — off by default
@@ -126,52 +124,54 @@ working unchanged.
 
 ## Forms
 
-Five forms, and they are not all the same problem (playbook §4b).
+Five forms, three kinds, and **none of them is rebuilt** — every one ships exactly
+as WordPress serves it.
 
-**Two are third-party embeds with no design in the served HTML.** There is nothing
-to clone — only a dependency:
+**Three are third-party embeds.** The embed *is* the working form, and its host
+outlives the WordPress install, so keeping it is both the faithful choice and the
+functional one:
 
 | | |
 | --- | --- |
-| `/contact-me/` | ActiveCampaign form 5. An empty `<div class="_form_5">` plus a loader from `kristenpardue16396.activehosted.com` that builds the whole form in the browser. |
 | popup 2995 | A LeadConnector ("Trustymail") iframe, form `FMxAdmW9fwWIvqjnE8bk`, "Subscribe - BSC" — opened a second after load on every page. |
+| `/contact-me/` | ActiveCampaign form 5: an empty `<div class="_form_5">` plus a loader from `kristenpardue16396.activehosted.com` that builds the form in the browser. |
+| the booking pages | Five more GoHighLevel iframes from `links.sybrware.com` — see the caveat below. |
 
-`scripts/extract.mjs` marks both, and `PageContent.astro` swaps them for
-`ContactForm.astro` — a fully static form that POSTs `FormData` straight to
-`PUBLIC_CONTACT_ENDPOINT` — **once that endpoint is configured**. Until then both
-originals ship untouched: ActiveCampaign and GoHighLevel host them, so they keep
-working after cutover; they just stop being ours to route. Shipping a form that
-posts nowhere would be strictly worse.
+Each ships **with its loader script**, and that detail is load-bearing rather than
+incidental. A GoHighLevel form iframe carries a fixed height in its own markup;
+`form_embed.js` is what receives the real rendered height from inside the frame and
+resizes the iframe to it. Drop the loader and the iframe still renders — just
+clipped to whatever height the markup happened to specify. `scripts/functional.mjs`
+asserts both the iframe and its loader are present.
 
-Both field sets were **measured, not guessed** — `npm run form:inspect` drives the
-live pages in headless Chrome and reads each widget's own document:
-
-* contact — First Name / Last Name / Email\* / Phone, a three-option "I have a
-  question about…" select, and a Message box; 39 px rows on white, 1 px `#979797`
-  at 4 px radius, IBM Plex Sans 14, over a `#FFC1B8` Submit.
-* subscribe — Full Name / Email\* / Phone; 55 px rows, transparent on a 2 px
-  `#FFC1B8` border at 0 radius, Roboto 14, over a 51 px `#FFC1B8` Submit.
-
-**Three are rendered by WordPress, in full, with their own stylesheets** — so they
-*do* have a design, and cloning it is the job:
+**Two are rendered by WordPress**, in full, with their own stylesheets — so they
+have a design, and cloning it is the job:
 
 | | |
 | --- | --- |
-| `/foundations-health-program-registration/` | Gravity Forms 8 — 13 fields |
-| `/patient-wellness-intake/` | Gravity Forms — 40 fields, styled by the UAEL GF styler |
-| `/foundations-old/` | Gravity Forms 2 — 2 fields |
+| `/foundations-health-program-registration/` | Gravity Forms 8 — 14 fields |
+| `/patient-wellness-intake/` | Gravity Forms 4 — 40 fields, styled by the UAEL GF styler |
+| `/foundations-old/` | Gravity Forms 5 — 2 fields |
+| `/elementor-3137/` | An Elementor Pro form, on an unfinished draft (bug 8) |
 
-Their markup ships verbatim. Only their destination moves: `initHostedForms()` in
-`src/scripts/elementor.js` repoints the `action` at `PUBLIC_CONTACT_ENDPOINT` and
-intercepts the submit, keeping Gravity's own honeypot field. Without an endpoint
-they are left exactly as WordPress serves them — which means they stop working on
-cutover, and the client needs to know that.
-
-There is a fourth WordPress-rendered form, an Elementor Pro form on
-`/elementor-3137/`, handled the same way. That page is an unfinished draft (bug 8).
+Their markup is cloned exactly, and `src/scripts/elementor.js` reproduces the DOM
+contract their plugins' JS created — the AJAX wrapper's reveal, the one
+conditional-logic rule, and the styler's `<span class="uael-gf-select-custom">`
+around every `<select>`. What is *not* changed is where they POST: they post to
+WordPress, so **they stop delivering the moment the install is switched off.** That
+is a fact for the client to act on, not something to paper over by quietly sending
+submissions elsewhere. See "Known functional loss on cutover".
 
 No payment gateway is loaded anywhere on this site, so no form here collects card
 details, and none must be given one without a real gateway behind it.
+
+### Caveat: `links.sybrware.com` no longer resolves
+
+The five booking iframes on the scheduling pages point at `links.sybrware.com`,
+which is **NXDOMAIN** — it does not resolve, so those frames are already blank on
+the WordPress site today. They are cloned as-is. If the client still wants those
+booking widgets, they need re-issuing from whatever GoHighLevel account replaced
+that sub-account.
 
 ---
 
@@ -179,13 +179,13 @@ details, and none must be given one without a real gateway behind it.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `PUBLIC_CONTACT_ENDPOINT` | *(empty)* | Growthmap lead endpoint. Empty = keep the originals. |
 | `PUBLIC_SITE_URL` | `https://kristenpardue.com` | Canonical origin; templated into Yoast's block. |
-| `PUBLIC_FORM_MODE` | `growthmap` | `embed` forces the originals even with an endpoint set. |
 | `PUBLIC_WEBFONTS` | `on` | Link the five self-hosted Google families. |
 | `PUBLIC_ANALYTICS` | `on` | Inert here — this site carries no tags (bug 14). |
 | `PUBLIC_CHAT_WIDGET` | `on` | Inert here — no chat widget on this site. |
 | `PUBLIC_APPLY_FIXES` | *(off)* | Build with the corrections in `src/lib/fixes.ts` applied. |
+
+There is no form endpoint to configure, by design — see [Forms](#forms).
 
 `npm run compare` and `npm run functional` build with `PUBLIC_ANALYTICS=off`.
 
@@ -353,8 +353,11 @@ consequence:
   wants search back, the options are a build-time index (Pagefind is the obvious
   one — it indexes `dist/` after the build and needs no runtime) or removing the
   magnifier. This needs a decision before cutover, not after.
-* **The three Gravity Forms and the Elementor Pro form stop delivering** until
-  `PUBLIC_CONTACT_ENDPOINT` is set — see [Forms](#forms).
+* **The three Gravity Forms and the Elementor Pro form stop delivering.** They
+  POST to WordPress. The three third-party embeds are unaffected — their hosts are
+  not WordPress. If the client needs the Gravity Forms to keep collecting, the
+  options are to re-issue them as GoHighLevel/ActiveCampaign embeds like the
+  others, or to wire them to a form service. This needs a decision before cutover.
 
 ---
 
@@ -381,7 +384,7 @@ entrance animation has settled.
 | **900 px, 33 routes** (one per template, skin and page type) | **0 diffs** |
 | **390 px, the same 33** | **0 diffs** |
 | `npm run audit` | 177 pages, 180 stylesheets, **20,186 references checked**, no broken internal reference beyond the seven production already has |
-| `npm run functional` | **56/56** with no endpoint configured, **64/64** with one |
+| `npm run functional` | **62/62** |
 
 Seven real differences were found and closed on the way there, each one worth
 knowing about because none of them is visible by eye:
@@ -417,10 +420,11 @@ answers.
 
 Before the domain is cut over:
 
-1. Set `PUBLIC_CONTACT_ENDPOINT` in the Vercel project (Production + Preview) and
-   redeploy — without it the two embeds stay and the four WordPress-hosted forms go
-   dark on cutover.
-2. Have a human submit each form once end to end (playbook §1 step 6).
+1. Have a human submit each third-party embed once end to end (playbook §1 step 6):
+   the subscribe popup and the `/contact-me/` form. Both post to their own hosts, so
+   they should work identically before and after cutover.
+2. Decide what happens to the four Gravity/Elementor forms, which go dark on
+   cutover — see [Forms](#forms).
 3. Decide the six client questions in the bug register above: the WooCommerce
    pages, the four orphaned drafts, the thirty unlinked routes, the dead popup, the
    broken Essential Oils pagination, and whether site search should come back.

@@ -9,8 +9,7 @@
  */
 import type { PageRecord } from '../lib/pages';
 import { fragment, chatWidgetHtml, analyticsHead, analyticsBody } from '../lib/pages';
-import PageContent from '../components/PageContent.astro';
-import { CHAT_WIDGET, ANALYTICS, WEBFONTS, CONTACT_ENDPOINT } from '../config';
+import { CHAT_WIDGET, ANALYTICS, WEBFONTS } from '../config';
 import { FIXES_ON, FIX_CSS, fixPageMeta, fixSeoHead } from '../lib/fixes';
 import '../styles/global.css';
 
@@ -59,7 +58,7 @@ const PRELOAD_FONTS = webfonts
 ---
 
 <!doctype html>
-<html lang={page.lang} data-contact-endpoint={CONTACT_ENDPOINT || undefined}>
+<html lang={page.lang}>
   <head>
     <meta charset="UTF-8" />
     {/* Carried per page: /links/ is built on Elementor's canvas template, whose
@@ -104,7 +103,7 @@ const PRELOAD_FONTS = webfonts
     {page.header && <Fragment set:html={fragment(page.header)} />}
 
     <slot>
-      <PageContent html={fragment(page.content)} />
+      <Fragment set:html={fragment(page.content)} />
     </slot>
 
     {page.footer && <Fragment set:html={fragment(page.footer)} />}
@@ -121,7 +120,7 @@ const PRELOAD_FONTS = webfonts
         triggers it. */}
     {page.popups.map((name) => (
       <template class="gm-popup">
-        <PageContent html={fragment(name)} region={name} />
+        <Fragment set:html={fragment(name)} />
       </template>
     ))}
 

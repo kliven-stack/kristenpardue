@@ -1326,25 +1326,6 @@ function initEntranceAnimations() {
   targets.forEach((el) => observer.observe(el));
 }
 
-/* ------------------------------------------------------------------ *
- * WordPress-hosted forms
- *
- * Four forms on this site are rendered by WordPress and POST back to it: Gravity
- * Forms 8 (/foundations-health-program-registration/), 2 (/foundations-old/) and
- * the 40-field intake form (/patient-wellness-intake/), plus an Elementor Pro form
- * on the unfinished /elementor-3137/ draft. All four stop working the moment the
- * WordPress install is switched off.
- *
- * Their *markup* is not replaced — unlike the ActiveCampaign embed on /contact-me/,
- * these are rendered server-side in full, with Gravity's own stylesheets, so they
- * have a design and cloning it is the job (playbook §2). Only their destination
- * changes: with a Growthmap endpoint configured they POST there instead, as
- * FormData, exactly like `ContactForm.astro` does (playbook §4b). Without one they
- * are left alone, and the README says so.
- *
- * Gravity already renders its own honeypot (`gfield--type-honeypot`), so no extra
- * one is added; a submission that fills it is dropped here the same way.
- * ------------------------------------------------------------------ */
 /**
  * Gravity Forms ships its wrapper hidden and reveals it from JS.
  *
@@ -1453,66 +1434,25 @@ function initGravityLogic() {
   }
 }
 
-function initHostedForms() {
-  const endpoint = document.documentElement.dataset.contactEndpoint || '';
-  const forms = [...document.querySelectorAll('form[id^="gform_"], form.elementor-form')];
-  if (!endpoint || !forms.length) return;
-
-  for (const form of forms) {
-    form.setAttribute('action', endpoint);
-    form.setAttribute('method', 'post');
-    // The AJAX forms post into a hidden iframe; with the destination moved, the
-    // browser must do a real cross-origin fetch instead.
-    form.removeAttribute('target');
-
-    // The status line goes where the plugin puts its own validation summary, so it
-    // inherits the form's typography instead of arriving unstyled.
-    const status = document.createElement('p');
-    status.className = 'gm-hosted-form__status';
-    status.setAttribute('role', 'status');
-    status.setAttribute('aria-live', 'polite');
-    status.style.cssText = 'margin:12px 0 0;min-height:1.4em;';
-    form.append(status);
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      status.textContent = '';
-      if (!form.reportValidity()) return;
-
-      const data = new FormData(form);
-      data.set('form_name', form.getAttribute('data-formid')
-        ? `Gravity Form ${form.getAttribute('data-formid')}`
-        : form.getAttribute('name') || 'Form');
-      data.set('source_page', location.pathname);
-
-      // Gravity's honeypot field is the one inside `.gfield--type-honeypot`; a bot
-      // that filled it gets the success message and nothing is sent.
-      const honeypot = form.querySelector('.gfield--type-honeypot input');
-      if (honeypot && honeypot.value.trim()) {
-        form.reset();
-        status.textContent = 'Thanks — we will be in touch shortly.';
-        return;
-      }
-
-      const submit = form.querySelector('input[type="submit"], button[type="submit"]');
-      const original = submit && (submit.value || submit.textContent);
-      if (submit) submit.disabled = true;
-      try {
-        const response = await fetch(endpoint, { method: 'POST', body: data });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        form.reset();
-        status.textContent = 'Thanks — we will be in touch shortly.';
-      } catch {
-        status.textContent = 'Sorry, something went wrong. Please try again or email us.';
-      } finally {
-        if (submit) {
-          submit.disabled = false;
-          if (original !== undefined && 'value' in submit) submit.value = original;
-        }
-      }
-    });
-  }
-}
+/* ------------------------------------------------------------------ *
+ * A note on the four WordPress-rendered forms
+ *
+ * Three Gravity Forms (/foundations-health-program-registration/,
+ * /foundations-old/, /patient-wellness-intake/) and one Elementor Pro form
+ * (/elementor-3137/) are rendered server-side, in full, with their own
+ * stylesheets — so their markup is cloned exactly and the only thing this runtime
+ * owes them is the DOM contract their plugins' JS created: the wrapper reveal and
+ * the conditional-logic rule above, plus the UAEL styler's select wrapper.
+ *
+ * Where they POST is deliberately left alone. They post to WordPress, so they stop
+ * delivering the moment the install is switched off; that is a fact for the client
+ * to act on (README, "Known functional loss on cutover"), not something to paper
+ * over by silently sending their submissions somewhere else.
+ *
+ * The lead forms are not in this list at all, because they are third-party embeds
+ * that keep working: their `form_embed.js` loader ships with them, which is what
+ * sizes the iframe to the form it renders.
+ * ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ *
  * Trailing nodes
@@ -1578,7 +1518,6 @@ onReady(() => {
   initEntranceAnimations();
   revealGravityForms();
   initGravityLogic();
-  initHostedForms();
   initPopups();
   initTrailingNodes();
 });

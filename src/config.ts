@@ -1,30 +1,18 @@
 /** Site-wide switches that a project lead may want to flip without touching markup. */
 
 /**
- * How the site's contact form renders.
+ * There is no form switch on this site, and that is the decision rather than an
+ * omission: every form ships exactly as WordPress serves it.
  *
- * - `growthmap` — our own static form, POSTing to `PUBLIC_CONTACT_ENDPOINT`
- *                 (playbook §4b). This is the migration target.
- * - `embed`     — the original, byte-identical to the WordPress site: the
- *                 ActiveCampaign form-5 embed on /contact-me/. Useful only for A/B
- *                 comparison against production.
+ * The lead forms are third-party embeds — a LeadConnector iframe in popup 2995,
+ * five more booking iframes on the scheduling pages, and ActiveCampaign form 5 on
+ * /contact-me/. Their hosts outlive the WordPress install, so the embed *is* the
+ * working form and replacing it with our own would trade a form that works for one
+ * that needs an endpoint configured before it does.
  *
- * With no endpoint configured the original is kept regardless, so a deploy that
- * happens before the endpoint exists never ships a form that silently goes nowhere.
- * ActiveCampaign hosts that embed, so it keeps working after cutover — it just
- * stops being ours to route.
- *
- * The site's other four forms are not affected by this switch. Gravity Forms 8, 2
- * and the 40-field intake form, plus the Elementor Pro form on the /elementor-3137/
- * draft, are rendered server-side with their own stylesheets, so their markup is
- * cloned verbatim and only their POST target is repointed — by `initHostedForms()`
- * in src/scripts/elementor.js, from the same endpoint.
+ * The four WordPress-rendered forms (three Gravity Forms, one Elementor Pro form)
+ * are cloned exactly and stop delivering on cutover. See the README.
  */
-export const FORM_MODE: 'growthmap' | 'embed' =
-  (import.meta.env.PUBLIC_FORM_MODE as 'growthmap' | 'embed') || 'growthmap';
-
-/** Growthmap lead endpoint (public by design — it is read in the browser). */
-export const CONTACT_ENDPOINT = import.meta.env.PUBLIC_CONTACT_ENDPOINT || '';
 
 /**
  * Whether the pages link the five Google families, self-hosted by

@@ -18,45 +18,34 @@ const ORIGIN_ESC = 'https:\\/\\/kristenpardue.com';
 const INSECURE_ORIGIN = 'http://kristenpardue.com';
 
 /**
- * The two third-party form embeds worth replacing rather than reproducing, as
- * CSS selectors -> the variant of our static replacement.
+ * Forms are shipped as WordPress serves them. Nothing here replaces one.
  *
- *   ._form_5   `/contact-me/` embeds ActiveCampaign form 5 as an Elementor
- *              shortcode widget: an empty `<div class="_form_5">` plus a loader
- *              from `kristenpardue16396.activehosted.com`, which builds the whole
- *              form — markup, styles and all — in the browser.
- *   iframe…    Elementor popup 2995, attached to every page and opened a second
- *              after load, holds a LeadConnector ("Trustymail") iframe, form
- *              FMxAdmW9fwWIvqjnE8bk, "Subscribe - BSC".
+ * Five forms, three kinds, and the reason none of them is rebuilt:
  *
- * Neither has any design in the served HTML, so there is nothing to clone; there
- * is only a third-party dependency. Both are *marked* here rather than deleted:
- * `PageContent.astro` swaps them for our own static forms once
- * `PUBLIC_CONTACT_ENDPOINT` is configured (playbook §4b), and until then leaves
- * them exactly as WordPress serves them — both hosts outlive the WordPress
- * install, so a form that still works beats one that posts nowhere.
+ *   iframe embeds   Elementor popup 2995 holds a LeadConnector ("Trustymail")
+ *                   iframe, form FMxAdmW9fwWIvqjnE8bk ("Subscribe - BSC"), and the
+ *                   booking pages hold five more from links.sybrware.com. GoHighLevel
+ *                   hosts them, so they outlive the WordPress install untouched —
+ *                   the iframe *is* the form, and the right thing to do with it is
+ *                   keep it. Their `form_embed.js` loader is kept with them (see the
+ *                   script rule in cleanFragment): it is what posts the rendered
+ *                   height back to the parent, and without it the iframe keeps the
+ *                   fixed height the markup gives it and the form is cut off.
  *
- * Their field sets were read off the live widgets with `npm run form:inspect`, not
- * guessed; see src/components/ContactForm.astro.
+ *   script embed    /contact-me/ carries ActiveCampaign form 5 — an empty
+ *                   `<div class="_form_5">` plus a loader from
+ *                   kristenpardue16396.activehosted.com that builds the form in the
+ *                   browser. Also third-party hosted, also kept verbatim.
  *
- * Deliberately NOT listed, and why:
- *
- *   the three Gravity Forms — form 8 on /foundations-health-program-registration/,
- *     form 2 on /foundations-old/ and the 40-field intake form on
- *     /patient-wellness-intake/. Unlike the embeds these are rendered server-side,
- *     in full, with Gravity's own stylesheets — so they have a design, and cloning
- *     it is the job. Their markup ships verbatim; only where they POST changes, and
- *     that is done at runtime by `initHostedForms()` in src/scripts/elementor.js
- *     rather than by replacing the markup here.
- *
- *   the Elementor Pro form on /elementor-3137/ — same treatment, same reason. (The
- *     page itself is an unfinished draft named after its own post id; see the
- *     README's bug register.)
+ *   WordPress       three Gravity Forms — form 8 on
+ *                   /foundations-health-program-registration/, form 2 on
+ *                   /foundations-old/ and the 40-field intake form on
+ *                   /patient-wellness-intake/ — plus an Elementor Pro form on the
+ *                   /elementor-3137/ draft. These are rendered server-side with
+ *                   their own stylesheets, so their markup is cloned exactly; but
+ *                   they POST to WordPress, so they stop delivering on cutover.
+ *                   That is called out in the README rather than papered over.
  */
-const LEAD_FORMS = {
-  '._form_5': 'contact',
-  'iframe[src*="FMxAdmW9fwWIvqjnE8bk"]': 'subscribe',
-};
 
 // Hosts whose assets we mirror into public/ so the clone has no third-party image
 // deps. This site references none — every image is on the WordPress origin.
@@ -190,9 +179,6 @@ function cleanFragment($, $el, gfLogic = []) {
       $e.attr('style', s.split(ORIGIN).join(''));
     }
   });
-  // The popup's lead form is wrapped in markers so the page can swap in our own
-  // static form when a Growthmap endpoint is configured (playbook §4b). The booking
-  // calendars are left exactly as production serves them — see LEAD_FORMS above.
   // Gravity Forms' conditional logic, rescued from the inline script we drop.
   //
   // The plugin serves every field visible and hides the dependent ones from JS on
@@ -204,19 +190,6 @@ function cleanFragment($, $el, gfLogic = []) {
   // apply and to keep applying as the visitor types.
   for (const [formId, logic] of gfLogic) {
     $el.find(`#gform_wrapper_${formId}`).attr('data-gm-gf-logic', JSON.stringify(logic));
-  }
-
-  for (const [selector, variant] of Object.entries(LEAD_FORMS)) {
-    $el.find(selector).each((i, el) => {
-      // Wrap the whole widget, so swapping in our form also drops the embed's
-      // loader script rather than leaving it building a form into a node that is
-      // gone. Both embeds sit in one: the ActiveCampaign one in a shortcode
-      // widget, the LeadConnector one in an HTML widget.
-      const $widget = $(el).closest('[data-widget_type="shortcode.default"], [data-widget_type="html.default"]');
-      const $target = $widget.length ? $widget : $(el);
-      $target.before(`<!--gm-form:${variant}:start-->`);
-      $target.after(`<!--gm-form:${variant}:end-->`);
-    });
   }
 
   // WordPress-only endpoints that do not exist on the clone.

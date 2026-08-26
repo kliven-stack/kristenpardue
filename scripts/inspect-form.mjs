@@ -11,10 +11,13 @@
 //                 is same-site to Playwright even though it is cross-origin to the
 //                 page, so `page.frames()` can read it.
 //
-// Both third-party hosts reset the connection from some networks — including the
-// one this was written on, where curl and headless Chrome both get ECONNRESET. When
-// that happens the script says so rather than reporting an empty field set, and
-// src/components/ContactForm.astro keeps the documented fallback.
+// The clone ships both embeds verbatim, so this is a diagnostic rather than a
+// build step: it tells you what the widgets actually render, which is how you
+// check an embed still works after cutover without clicking through the site.
+//
+// Both hosts reset the connection from some networks — including the one this was
+// written on, where curl and headless Chrome both get ECONNRESET — so the script
+// says so rather than reporting an empty field set.
 import { chromium } from 'playwright';
 
 const ORIGIN = 'https://kristenpardue.com';
@@ -102,6 +105,6 @@ for (const [path, width] of TARGETS) {
 if (blocked.size) {
   console.log('\nthird-party requests that never completed from this network:');
   for (const line of blocked) console.log('  ' + line);
-  console.log('a field set could not be read; ContactForm.astro keeps its documented fallback.');
+  console.log('a field set could not be read from here; try again from another network.');
 }
 await browser.close();

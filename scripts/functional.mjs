@@ -7,11 +7,8 @@
  *   npm run build && npm run serve      # then, in another shell:
  *   npm run functional
  *
- * The form tests adapt to how `dist/` was built: with no `PUBLIC_CONTACT_ENDPOINT`
- * the pages keep the originals WordPress served, and the suite asserts exactly
- * that. Build with an endpoint to exercise our own forms end to end:
- *
- *   PUBLIC_CONTACT_ENDPOINT=https://example.test/lead npm run build && npm run functional
+ * The form tests assert what the clone ships: every form exactly as WordPress
+ * serves it, third-party embeds complete with the loader that sizes them.
  */
 import { chromium } from 'playwright';
 import { readdir, readFile } from 'node:fs/promises';
@@ -436,82 +433,91 @@ for (const width of [900, 390]) {
 }
 
 /* ------------------------------------------------------------------- forms */
-const endpointBuilt = (await readFile(path.join(DIST, 'contact-me/index.html'), 'utf8')).includes('gm-form__form');
-console.log(`\n(forms: dist was built ${endpointBuilt ? 'WITH' : 'WITHOUT'} PUBLIC_CONTACT_ENDPOINT)`);
-
-if (!endpointBuilt) {
+{
+  // Every form ships as WordPress serves it. For the third-party embeds that means
+  // the iframe *and* its `form_embed.js` loader — the loader is what receives the
+  // rendered height from inside the frame and sizes the iframe to it, so an embed
+  // without it renders the form cut off at whatever fixed height the markup gives.
   const { ctx, page } = await open('/contact-me/');
-  check('form: with no endpoint configured, the ActiveCampaign embed is kept',
+  check('form: /contact-me/ ships the ActiveCampaign embed',
     (await page.$$('._form_5')).length === 1);
-  await ctx.close();
-  const b = await open('/', { popup: 'keep' });
-  check('form: with no endpoint configured, the LeadConnector subscribe iframe is kept',
-    (await b.page.$$('iframe[src*="FMxAdmW9fwWIvqjnE8bk"]')).length === 1);
-  await b.ctx.close();
-} else {
-  const { ctx, page, errors } = await open('/contact-me/');
-  const fields = await page.$$eval('form.gm-form__form [name]', (els) => els.map((e) => e.name));
-  check('form: the contact form replaces the embed with the widget\'s own field set',
-    ['firstname', 'lastname', 'email', 'phone', 'enquiry', 'message'].every((n) => fields.includes(n)),
-    fields.join(', '));
-  check('form: the ActiveCampaign loader is gone', (await page.$$('._form_5')).length === 0);
-  check('form: every field has a real label',
-    await page.$$eval('form.gm-form__form input:not([type=hidden]):not([name=website]), form.gm-form__form textarea, form.gm-form__form select',
-      (els) => els.every((el) => !!el.labels?.length)));
-  const options = await page.$$eval('select[name="enquiry"] option', (os) => os.map((o) => o.value));
-  check('form: the enquiry select carries the widget\'s three options',
-    options.length === 4 && options.includes('Speaking inquiry'), options.join(' | '));
-
-  await page.click('.gm-form__submit');
-  await page.waitForTimeout(300);
-  check('form: an empty submit is blocked by validation',
-    await page.$eval('.gm-form__status', (el) => el.textContent.trim() === ''));
-
-  let posted = 0;
-  await page.route('**://example.test/**', (r) => { posted++; r.fulfill({ status: 200, body: 'ok' }); });
-  const fill = async () => {
-    await page.fill('input[name="firstname"]', 'Test');
-    await page.fill('input[name="lastname"]', 'Person');
-    await page.fill('input[name="email"]', 'test@example.com');
-    await page.fill('textarea[name="message"]', 'Hello');
-  };
-  await fill();
-  await page.$eval('input[name="website"]', (el) => { el.value = 'bot'; });
-  await page.click('.gm-form__submit');
-  await page.waitForTimeout(600);
-  check('form: a filled honeypot shows success but sends nothing',
-    posted === 0 && await page.$eval('.gm-form__status', (el) => el.dataset.state === 'ok'));
-
-  await fill();
-  await page.click('.gm-form__submit');
-  await page.waitForTimeout(900);
-  check('form: a valid submit POSTs to the endpoint and reports success',
-    posted === 1 && await page.$eval('.gm-form__status', (el) => el.dataset.state === 'ok'));
-  check('contact page raises no script errors', errors.length === 0, errors.join(' | '));
+  check('form: its loader ships with it',
+    (await page.$$('script[src*="activehosted.com"]')).length >= 1);
   await ctx.close();
 
-  // The Gravity Forms keep their own markup and only change destination.
+  const sub = await open('/', { popup: 'keep' });
+  const embed = await sub.page.evaluate(() => {
+    const frame = document.querySelector('.elementor-popup-modal iframe[src*="FMxAdmW9fwWIvqjnE8bk"]');
+    return frame && {
+      src: frame.getAttribute('src'),
+      loader: !!document.querySelector('.elementor-popup-modal script[src*="form_embed.js"]')
+        || !!document.querySelector('script[src*="form_embed.js"]'),
+    };
+  });
+  check('form: the subscribe popup ships the LeadConnector iframe and its loader',
+    embed && /verified\.trustymail\.co/.test(embed.src) && embed.loader, JSON.stringify(embed));
+  await sub.ctx.close();
+
   const gf = await open('/foundations-health-program-registration/');
   const action = await gf.page.$eval('form[id^="gform_"]', (f) => f.getAttribute('action'));
-  check('form: the Gravity Forms markup is kept and only its action is repointed',
-    action.startsWith('https://example.test/')
-    && (await gf.page.$$('.gform_wrapper .gfield')).length > 5, action);
-  let gposted = 0;
-  await gf.page.route('**://example.test/**', (r) => { gposted++; r.fulfill({ status: 200, body: 'ok' }); });
-  await gf.page.fill('#input_8_14', 'Person');
-  await gf.page.fill('#input_8_12', 'test@example.com');
-  await gf.page.fill('#input_8_8', '1 Test St');
-  await gf.page.fill('#input_8_9', 'Nashville');
-  await gf.page.fill('#input_8_10', 'TN');
-  await gf.page.fill('#input_8_2', '150');
-  await gf.page.fill('#input_8_4', 'none');
-  await gf.page.fill('#input_8_6', 'Better health');
-  await gf.page.click('form[id^="gform_"] input[type="submit"], form[id^="gform_"] button[type="submit"]');
-  await gf.page.waitForTimeout(900);
-  check('form: a Gravity Forms submit reaches the endpoint instead of WordPress',
-    gposted === 1 && await gf.page.$eval('.gm-hosted-form__status', (el) => /Thanks/.test(el.textContent)),
-    String(gposted));
+  const fields = await gf.page.$$eval('.gform_wrapper .gfield', (els) => els.length);
+  check('form: the Gravity Forms markup is cloned exactly, and still posts where WordPress did',
+    action === '/foundations-health-program-registration/' && fields > 5,
+    `${action} — ${fields} fields`);
   await gf.ctx.close();
+
+  const intake = await open('/patient-wellness-intake/');
+  const revealed = await intake.page.evaluate(() => {
+    const w = document.getElementById('gform_wrapper_4');
+    return { display: getComputedStyle(w).display, height: Math.round(w.getBoundingClientRect().height),
+      hidden: document.getElementById('field_4_150')?.style.display };
+  });
+  check('form: the AJAX wrapper is revealed and its conditional field starts hidden',
+    revealed.display === 'block' && revealed.height > 1000 && revealed.hidden === 'none',
+    JSON.stringify(revealed));
+
+  // …and appears when the select it depends on is set to "Other".
+  await intake.page.selectOption('#input_4_149', 'Other');
+  await intake.page.waitForTimeout(300);
+  const shown = await intake.page.evaluate(() => {
+    const li = document.getElementById('field_4_150');
+    return { display: getComputedStyle(li).display, disabled: li.querySelector('input').disabled };
+  });
+  check('form: choosing "Other" reveals the conditional field and enables it',
+    shown.display !== 'none' && shown.disabled === false, JSON.stringify(shown));
+  await intake.ctx.close();
+}
+
+/* --------------------------------------------------------- third-party JS */
+{
+  // The ThriveCart loader on /gi-mapping/ is written `//tinder.thrivecart.com/...`.
+  // A protocol-relative third-party URL is easy to mistake for a same-origin
+  // WordPress bundle and drop — the extract step did exactly that once — and the
+  // symptom is quiet: the button keeps its markup and loses the stylesheet the
+  // loader injects, rendering as an unstyled inline link 5px shorter than
+  // production's. `npm run compare` blocks the host on both sides for determinism,
+  // so this is where it is checked.
+  const { ctx, page } = await open('/gi-mapping/');
+  check('third-party: the ThriveCart loader ships with the buttons it styles',
+    (await page.$$('script[src*="thrivecart.com"]')).length >= 1);
+
+  let styled = null;
+  for (let i = 0; i < 40 && !styled; i++) {
+    styled = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('.thrivecart-button')]
+        .find((n) => getComputedStyle(n).display !== 'none');
+      const cs = el && getComputedStyle(el);
+      return cs && cs.display === 'inline-block'
+        ? { display: cs.display, font: cs.fontFamily.split(',')[0], h: Math.round(el.getBoundingClientRect().height) }
+        : null;
+    });
+    if (!styled) await page.waitForTimeout(250);
+  }
+  // Production renders this button 47px tall in the system stack; unstyled it is
+  // 42px in the page's own Noto Sans.
+  check('third-party: it styles the button the way production does',
+    styled && styled.h === 47 && /apple-system/.test(styled.font), JSON.stringify(styled));
+  await ctx.close();
 }
 
 /* --------------------------------------------------- links, assets, routing */

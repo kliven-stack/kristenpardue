@@ -32,11 +32,6 @@
   --color-brand-white: #ffffff;
   --color-brand-black: #000000;
 
-  /* Form field chrome, matched by ContactForm.astro to Gravity's own theme, which
-     is what the site's other forms are drawn in. */
-  --color-field-border: #cfcfcf;
-  --color-field-placeholder: #8c8f94;
-
   /* Elementor kit typography globals — Montserrat for headings and buttons,
      Raleway at 300 for body copy. (The kit also loads Oswald, Poiret One and
      Sacramento for individual widgets.) */
