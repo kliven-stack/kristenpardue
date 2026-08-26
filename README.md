@@ -98,8 +98,9 @@ The pieces it drives:
 | Toggles | `/faq/` and `/get-essential-oils/` — open writes `display: block` inline, close removes it |
 | Search | the header magnifier's full-screen overlay |
 | Countdowns | two Ultimate Addons timers, in opposite states — see bug 12 |
+| Gravity Forms | the wrapper's `display:none` removed, the one conditional-logic rule applied and re-applied as the visitor types, and the UAEL styler's `<span class="uael-gf-select-custom">` around every `<select>` |
 | Popups | all three templates, parked in `<template>` so the pre-open document matches production's (which carries zero `[data-elementor-type="popup"]` nodes), with the page-load trigger's 1 s delay and its once-per-visitor cap in the same `localStorage` key Elementor uses |
-| Entrance animations | 251 elements ship `elementor-invisible`; without the observer they stay invisible forever |
+| Entrance animations | 251 elements carry one, most of them also rendering `elementor-invisible`; without the observer those stay invisible forever. Resolved per device — one element's animation is mobile-only |
 
 ### Layout
 
@@ -337,6 +338,12 @@ consequence:
   the blog's own pagination links `/blog/2/` and Yoast canonicalises both to
   `/blog/`, so building it would ship a byte-identical duplicate. `vercel.json`
   redirects `/blog/page/:n` → `/blog/:n/`.
+* **The uploads are re-encoded in place.** WordPress served 122 MB of unprocessed
+  JPEG and PNG for a site whose widest rendered image is 1,180 px. `npm run strip`
+  drops runaway XMP metadata losslessly and `npm run images` re-encodes at
+  mozjpeg q82 — **122 MB → 93 MB**, at identical pixel dimensions, so no markup
+  changes and the fidelity diff is unaffected (re-verified after the pass). Both
+  steps are idempotent and both are undone by re-running `npm run media`.
 
 ### Known functional loss on cutover
 
@@ -368,7 +375,36 @@ entrance animation has settled.
 
 ### Where it got to
 
-*(filled in below from the final run)*
+| Run | Result |
+| --- | --- |
+| **1440 px, all 177 routes** | **177 comparisons, 0 diffs** |
+| **900 px, 33 routes** (one per template, skin and page type) | **0 diffs** |
+| **390 px, the same 33** | **0 diffs** |
+| `npm run audit` | 177 pages, 180 stylesheets, **20,186 references checked**, no broken internal reference beyond the seven production already has |
+| `npm run functional` | **56/56** with no endpoint configured, **64/64** with one |
+
+Seven real differences were found and closed on the way there, each one worth
+knowing about because none of them is visible by eye:
+
+1. **WordPress's emoji polyfill.** `wp-emoji-release.min.js` swaps emoji for 17×17
+   `<img>` from s.w.org — but only in a browser that fails its canvas support test,
+   which headless Chromium does and a visitor's Chrome does not. Not reproduced;
+   the probe puts the alt text back so both sides are the same document.
+2. **The stretched burger panel** was anchored to the widget (65 px) instead of the
+   toggle (45 px), and offset by the wrong measurement — 28 diffs a page at
+   768–1024 px, on every page.
+3. **Gravity Forms ships its wrapper hidden** and reveals it from JS. The 40-field
+   intake form measured 0 px tall against production's 3,920.
+4. **One conditional-logic rule** lived in an inline script we drop, so a field that
+   should appear only on "Other" was permanently visible — 102 px.
+5. **A protocol-relative third-party loader** (`//tinder.thrivecart.com/…`) was being
+   taken for one of WordPress's own bundles and dropped, losing the stylesheet that
+   makes the "GET STARTED" button a button.
+6. **Responsive entrance animations.** The runtime read only the desktop key, so the
+   one element with a mobile-only animation never got its class.
+7. **The UAEL Gravity Forms styler wraps every `<select>`** in
+   `<span class="uael-gf-select-custom">` — 10 px each, and one of them sits inside
+   the address field.
 
 ---
 

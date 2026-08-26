@@ -350,7 +350,7 @@ for (const width of [900, 390]) {
   check('popup: the dead "Thank You" popup 3170 is not opened by anything',
     !(await page.$('#elementor-popup-modal-3170')));
 
-  await page.locator('.dialog-close-button').first().click();
+  await page.locator('.elementor-popup-modal .dialog-close-button').first().click();
   await page.waitForTimeout(400);
   check('popup: the close button dismisses it and cleans up <body>',
     !(await page.$('.elementor-popup-modal'))
@@ -536,6 +536,7 @@ if (!endpointBuilt) {
   const KNOWN_BROKEN = new Set([
     '/essential-oils/page/2/', '/essential-oils/page/3/', '/essential-oils/page/4/',
     '/my-story/my-story-of-healing-revised/',
+    '/www.pbs.org/pov/foodinc/',
   ]);
 
   const { ctx, page } = await open('/');

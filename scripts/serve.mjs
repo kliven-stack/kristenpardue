@@ -15,23 +15,41 @@ const TYPES = {
   '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.xml': 'application/xml',
 };
 
+/**
+ * One vercel.json redirect rule, compiled.
+ *
+ * Vercel's `source` accepts `:name` and `:name*` segments and substitutes them into
+ * `destination`. `/blog/page/:n` -> `/blog/:n/` is the rule that matters here, and a
+ * literal string comparison misses it — which is how the functional suite caught
+ * `/blog/page/2/` 404ing locally while it would have worked in production. The
+ * whole point of serving `dist/` for verification is that it behaves like Vercel.
+ */
+const compileRedirect = (rule) => {
+  const names = [];
+  const pattern = rule.source.replace(/\/$/, '').replace(/:([A-Za-z0-9_]+)(\*?)/g, (whole, name, star) => {
+    names.push(name);
+    return star ? '(.*)' : '([^/]+)';
+  });
+  return {
+    ...rule,
+    names,
+    regex: new RegExp(`^${pattern}$`),
+    fill: (match) => names.reduce(
+      (out, name, i) => out.split(`:${name}*`).join(match[i + 1]).split(`:${name}`).join(match[i + 1]),
+      rule.destination,
+    ),
+  };
+};
+const rules = redirects.map(compileRedirect);
+
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  // Two of vercel.json's redirects exist because the client asked for those pages to
-  // be retired (/home-2/, /template/). A `PUBLIC_ORIGINAL_BUGS=keep` build is there
-  // to be diffed against WordPress, where both pages still answer 200 — so honour
-  // them as pages, not redirects, in that mode.
-  const RETIRED = new Set(['/home-2', '/template']);
-  const keepBugs = process.env.PUBLIC_ORIGINAL_BUGS === 'keep';
-
-  const hit = redirects.find((r) => {
-    if (keepBugs && RETIRED.has(r.source)) return false;
-    if (r.source.replace(/\/$/, '') !== url.pathname.replace(/\/$/, '')) return false;
-    return (r.has ?? []).every((h) => h.type === 'query' && url.searchParams.has(h.key));
-  });
+  const hit = rules
+    .map((rule) => ({ rule, match: rule.regex.exec(url.pathname.replace(/\/$/, '')) }))
+    .find(({ rule, match }) => match && (rule.has ?? []).every((h) => h.type === 'query' && url.searchParams.has(h.key)));
   if (hit) {
-    res.writeHead(hit.permanent ? 308 : 307, { location: hit.destination + url.search });
+    res.writeHead(hit.rule.permanent ? 308 : 307, { location: hit.rule.fill(hit.match) + url.search });
     res.end();
     return;
   }
