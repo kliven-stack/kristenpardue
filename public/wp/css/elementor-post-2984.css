@@ -1,0 +1,14 @@
+.elementor-widget-section .eael-protected-content-message{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-widget-section .protected-content-error-msg{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-2984 .elementor-element.elementor-element-9b6ff05{padding:80px 20px 80px 20px;}.elementor-widget-heading .eael-protected-content-message{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-widget-heading .protected-content-error-msg{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-widget-heading .elementor-heading-title{font-family:var( --e-global-typography-primary-font-family ), Sans-serif;color:var( --e-global-color-primary );}.elementor-2984 .elementor-element.elementor-element-72bada4{text-align:center;}.elementor-2984 .elementor-element.elementor-element-72bada4 .elementor-heading-title{font-family:"Oswald", Sans-serif;font-size:50px;}.elementor-widget-spacer .eael-protected-content-message{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-widget-spacer .protected-content-error-msg{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-2984 .elementor-element.elementor-element-545a227{--spacer-size:30px;}.elementor-widget-shortcode .eael-protected-content-message{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}.elementor-widget-shortcode .protected-content-error-msg{font-family:var( --e-global-typography-secondary-font-family ), Sans-serif;}/* Start custom CSS for section, class: .elementor-element-9b6ff05 */.eael-woo-checkout .woocommerce .woocommerce-info {
+    background-color: #fca89c33 !important;
+    color: #0c5460;
+}
+.woocommerce-info::before {
+    color: #fca89c !important;
+}
+.woocommerce button.button.alt{
+    background: #fca89c;
+    border-radius: 0px
+}
+.woocommerce button.button.alt:hover{
+    background: #777777;
+}/* End custom CSS */

@@ -1,0 +1,120 @@
+---
+/**
+ * Page shell for the cloned WordPress pages.
+ *
+ * The <head> reproduces the original's stylesheet cascade exactly: every handle the
+ * WordPress page linked, in the same order, served from public/wp/css/. Elementor's
+ * compiled per-post CSS is what makes the clone pixel-accurate, so it ships verbatim
+ * rather than being re-derived (playbook §2).
+ */
+import type { PageRecord } from '../lib/pages';
+import { fragment, chatWidgetHtml, analyticsHead, analyticsBody } from '../lib/pages';
+import PageContent from '../components/PageContent.astro';
+import { CHAT_WIDGET, ANALYTICS, WEBFONTS } from '../config';
+import { FIXES_ON, FIX_CSS, fixPageMeta, fixSeoHead } from '../lib/fixes';
+import '../styles/global.css';
+
+interface Props {
+  page: PageRecord;
+}
+
+const { page } = Astro.props as Props;
+const site = Astro.site ?? new URL('https://kristenpardue.com');
+const canonical = new URL(page.path, site).href;
+
+// Yoast's block is stored with the origin templated out, so a preview deployment
+// describes itself rather than production. The escaped spelling is the one inside
+// the JSON-LD graph.
+const seoHead = fixSeoHead(
+  page.seoHead
+    .split('__ORIGIN_ESC__').join(site.origin.replace(/\//g, '\\/'))
+    .split('__ORIGIN__').join(site.origin),
+);
+
+const meta = fixPageMeta(page.path);
+const description = meta.description ?? page.description;
+const robots = meta.robots ?? page.robots;
+
+/**
+ * Elementor's Google-font stylesheets, self-hosted by scripts/build-fonts.mjs.
+ * On by default, because that is what production renders.
+ */
+const webfonts = WEBFONTS !== 'off';
+const css = webfonts ? page.css : page.css.filter((c) => !c.name.startsWith('elementor-gf-local-'));
+
+/**
+ * The faces above the fold on every page, from Elementor's own local Google Fonts
+ * files. Kit 6 sets Poppins throughout — 600 for headings, 500 for buttons and the
+ * nav, 400 for body copy — so all three latin faces are wanted immediately.
+ * Preloading them removes the swap flash the WordPress site shows.
+ */
+const PRELOAD_FONTS = webfonts
+  ? [
+      '/wp/fonts/poppins-pxieyp8kv8jhgfvrjjfecg.woff2',
+      '/wp/fonts/poppins-pxibyp8kv8jhgfvrlgt9z1xlfq.woff2',
+      '/wp/fonts/poppins-pxibyp8kv8jhgfvrlej6z1xlfq.woff2',
+    ]
+  : [];
+---
+
+<!doctype html>
+<html lang={page.lang}>
+  <head>
+    <meta charset="UTF-8" />
+    {/* Carried per page: /book-an-appointment/ is built on Elementor's canvas
+        template, whose head asks for `viewport-fit=cover`. */}
+    <meta name="viewport" content={page.viewport} />
+    <link rel="profile" href="https://gmpg.org/xfn/11" />
+    {robots && <meta name="robots" content={robots} />}
+    <title set:html={page.title} />
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={canonical} />
+    <Fragment set:html={seoHead} />
+
+    {/* The client's Google tags, verbatim. WordPress prints these into <head>, and
+        so does the clone — unlike production, where its own `<chat-widget>` in
+        <head> ends the head early and pushes four of the six into <body>. */}
+    {ANALYTICS && analyticsHead && <Fragment set:html={analyticsHead} />}
+
+    {PRELOAD_FONTS.map((href) => (
+      <link rel="preload" as="font" type="font/woff2" href={href} crossorigin />
+    ))}
+
+    {css.map((sheet) => <link rel="stylesheet" href={`/wp/css/${sheet.name}.css`} />)}
+
+    {/* All four icon links and the tile, in <head> where WordPress meant them to be
+        — production loses three of them to the parser. */}
+    {page.favicons.map((icon) => (
+      <link rel={icon.rel} href={icon.href} {...(icon.sizes ? { sizes: icon.sizes } : {})} />
+    ))}
+    {page.tile && <meta name="msapplication-TileImage" content={page.tile} />}
+
+    {FIXES_ON && FIX_CSS && <style set:html={FIX_CSS} />}
+
+    <slot name="head" />
+  </head>
+
+  <body class={page.bodyClass}>
+    {ANALYTICS && analyticsBody && <Fragment set:html={analyticsBody} />}
+
+    {page.hasSkipLink && (
+      <a class="skip-link screen-reader-text" href="#content">Skip to content</a>
+    )}
+
+    {/* WordPress prints this into <head>; every parser moves it here, which is where
+        production's DOM has it too. */}
+    {CHAT_WIDGET && chatWidgetHtml && <Fragment set:html={chatWidgetHtml} />}
+
+    {page.header && <Fragment set:html={fragment(page.header)} />}
+
+    <slot>
+      <PageContent html={fragment(page.content)} />
+    </slot>
+
+    {/* A plain fragment: unlike the sibling clones, this site's footer carries no
+        form — only the second `<chat-widget>` copy, which rides along verbatim. */}
+    {page.footer && <Fragment set:html={fragment(page.footer)} />}
+
+    <script src="../scripts/elementor.js"></script>
+  </body>
+</html>

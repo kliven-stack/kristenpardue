@@ -1,0 +1,23 @@
+.aawp .aawp-button.aawp-button--red, .aawp-button.aawp-button--red {
+    background-color: 
+#ffbdb6;
+border-color:
+#ffbdb6 !important;
+color:
+    #333 !important;
+}
+.aawp .aawp-button.aawp-button--red:hover, .aawp-button.aawp-button--red:hover, .aawp .aawp-button.aawp-button--red:focus, .aawp-button.aawp-button--red:focus {
+    border: 1px solid 
+#ccc !important;
+color:
+#fff !important;
+background-color:
+    #ccc;
+}
+
+.aawp-product__title{color: #333}
+.aawp-product__title:hover {color: #ffbdb6}
+.aawp .aawp-button.aawp-button--red:visited, .aawp-button.aawp-button--red:visited {
+    color: 
+    #333 !important;
+}

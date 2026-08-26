@@ -1,0 +1,21 @@
+
+a {
+    color: #fca89c;
+}
+.header-mainmenu {
+    z-index: 999999;
+}
+.gform_confirmation_message_6.gform_confirmation_message{
+	text-align: center !important;
+}
+@media (max-width: 767px){
+	.cp-popup-content.cpro-active-step.cp-img-lazy.cp-bg-lazy.cp-modal_popup.cp-panel-1{
+	background-image: url(http://kristenpardue.com/wp-content/uploads/2020/02/bg.jpg)!important;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+ }
+}
+
+

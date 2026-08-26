@@ -1,0 +1,432 @@
+---
+/**
+ * Growthmap lead forms (playbook §4b).
+ *
+ * Fully static: the browser POSTs FormData straight to `PUBLIC_CONTACT_ENDPOINT`,
+ * so the site needs no adapter and no serverless function. These replace the two
+ * forms the WordPress site carries, both of which die with it:
+ *
+ *   contact  /contact-us/ — the LeadConnector ("Trustymail") widget
+ *            N1bAmUSgYPq5niqW6jbS, "Contact Us Form", embedded as an iframe.
+ *   billing  /pay-my-bill/ — WPForms form 3051, embedded by shortcode. It posts to
+ *            `/wp-admin/admin-ajax.php`, so it stops working the moment WordPress
+ *            is switched off.
+ *
+ * Both field sets were read off the originals rather than guessed — the contact one
+ * out of the live widget's own document with `npm run form:inspect` (Full Name,
+ * Phone, Email, Message, one terms checkbox, a #46B7DF SUBMIT at 4px radius, 36px
+ * rows on white at 5px radius), the billing one out of the rendered WPForms markup
+ * (Name split first/last, Email, Phone, a Bill-to address block, Invoice Number,
+ * Amount Requested and a computed Total).
+ *
+ * Deliberate departures, all accessibility or correctness fixes:
+ *   * every field gets a real <label> — the LeadConnector widget labels by
+ *     placeholder only, which is not an accessible name;
+ *   * the fields the widget marks with an asterisk are actually `required`
+ *     (it renders the asterisk but sets `required` on nothing);
+ *   * the phone field is a plain `tel` input rather than the widget's country
+ *     picker, which is a JS component we are not shipping.
+ *
+ * No payment gateway is wired to the billing form on the WordPress site either —
+ * no Stripe, Square or Authorize.net asset loads anywhere — so it collects billing
+ * details and an amount, never card data. This reproduces that exactly: there is no
+ * card field here, and there must not be one without a real gateway behind it.
+ */
+import { CONTACT_ENDPOINT } from '../config';
+
+interface Props {
+  variant: 'contact' | 'billing';
+  /** Names the region, so ids stay unique if a form ever renders twice on a page. */
+  region: string;
+}
+
+const { variant, region } = Astro.props as Props;
+
+interface Field {
+  name: string;
+  tag: 'input' | 'textarea' | 'select';
+  type?: string;
+  label: string;
+  placeholder?: string;
+  autocomplete?: string;
+  required?: boolean;
+  /** Renders two inputs side by side (WPForms' name and address rows). */
+  half?: boolean;
+  step?: string;
+  inputmode?: string;
+}
+
+const CONTACT_FIELDS: Field[] = [
+  { name: 'full_name', tag: 'input', type: 'text', label: 'Full Name', placeholder: 'Full Name', autocomplete: 'name', required: true },
+  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', placeholder: 'Phone', autocomplete: 'tel', required: true },
+  { name: 'email', tag: 'input', type: 'email', label: 'Email', placeholder: 'Email', autocomplete: 'email', required: true },
+  { name: 'message', tag: 'textarea', label: 'Message', placeholder: 'Message', required: true },
+];
+
+const BILLING_FIELDS: Field[] = [
+  { name: 'first_name', tag: 'input', type: 'text', label: 'First', autocomplete: 'given-name', required: true, half: true },
+  { name: 'last_name', tag: 'input', type: 'text', label: 'Last', autocomplete: 'family-name', required: true, half: true },
+  { name: 'email', tag: 'input', type: 'email', label: 'Email', autocomplete: 'email', required: true },
+  { name: 'phone', tag: 'input', type: 'tel', label: 'Phone', autocomplete: 'tel', required: true },
+  { name: 'address1', tag: 'input', type: 'text', label: 'Address Line 1', autocomplete: 'address-line1', required: true },
+  { name: 'address2', tag: 'input', type: 'text', label: 'Address Line 2', autocomplete: 'address-line2' },
+  { name: 'city', tag: 'input', type: 'text', label: 'City', autocomplete: 'address-level2', required: true, half: true },
+  { name: 'state', tag: 'input', type: 'text', label: 'State / Province / Region', autocomplete: 'address-level1', required: true, half: true },
+  { name: 'postal', tag: 'input', type: 'text', label: 'Postal Code', autocomplete: 'postal-code', required: true, half: true },
+  { name: 'country', tag: 'input', type: 'text', label: 'Country', autocomplete: 'country-name', required: true, half: true },
+  { name: 'invoice_number', tag: 'input', type: 'number', label: 'Invoice Number', required: true },
+  { name: 'amount_requested', tag: 'input', type: 'text', label: 'Amount Requested', required: true, inputmode: 'decimal' },
+];
+
+const FIELDS = variant === 'contact' ? CONTACT_FIELDS : BILLING_FIELDS;
+const FORM_NAME = variant === 'contact' ? 'Contact Us Form' : 'Pay My Bill';
+const SUBMIT_TEXT = variant === 'contact' ? 'SUBMIT' : 'Submit';
+
+/**
+ * The LeadConnector widget's single consent checkbox, verbatim. It is not required
+ * on the widget, and it is not required here.
+ */
+const CONSENT = variant === 'contact'
+  ? 'I agree to terms & conditions provided by the company. By providing my phone number, I agree to receive text messages from the business.'
+  : null;
+
+const id = (name: string) => `gm-${region}-${variant}-${name}`;
+---
+
+<div class:list={['gm-form', `gm-form--${variant}`]}>
+  <form
+    class="gm-form__form"
+    method="post"
+    action={CONTACT_ENDPOINT}
+    data-endpoint={CONTACT_ENDPOINT}
+    data-variant={variant}
+  >
+    <input type="hidden" name="form_name" value={FORM_NAME} />
+    <input type="hidden" name="source_page" value="" data-fill="path" />
+
+    <div class="gm-form__rows">
+      {FIELDS.map((field) => (
+        <div class:list={[
+          'gm-form__field',
+          field.half && 'gm-form__field--half',
+          field.tag === 'textarea' && 'gm-form__field--area',
+        ]}>
+          <label class:list={['gm-form__label', variant === 'contact' && 'gm-form__label--hidden']} for={id(field.name)}>
+            {field.label}{field.required && <span class="gm-form__req" aria-hidden="true"> *</span>}
+          </label>
+          {field.tag === 'textarea' ? (
+            <textarea
+              id={id(field.name)}
+              name={field.name}
+              placeholder={field.placeholder}
+              required={field.required}
+            />
+          ) : (
+            <input
+              id={id(field.name)}
+              name={field.name}
+              type={field.type}
+              placeholder={field.placeholder}
+              autocomplete={field.autocomplete}
+              inputmode={field.inputmode}
+              required={field.required}
+              class:list={[field.type === 'email' && variant === 'contact' && 'gm-form__input--email']}
+            />
+          )}
+        </div>
+      ))}
+
+      {/* WPForms computes the total from the payment field and mirrors it into a
+          read-only input. Reproduced by src/scripts/elementor.js. */}
+      {variant === 'billing' && (
+        <div class="gm-form__field gm-form__field--total">
+          <label class="gm-form__label" for={id('total')}>
+            Total<span class="gm-form__req" aria-hidden="true"> *</span>
+          </label>
+          <div class="gm-form__total" data-total-display>$ 0.00</div>
+          <input id={id('total')} name="total" type="text" readonly value="$0.00" data-total-value />
+        </div>
+      )}
+    </div>
+
+    {CONSENT && (
+      <div class="gm-form__consent">
+        <input type="checkbox" id={id('terms')} name="terms_and_conditions" value="yes" />
+        <label for={id('terms')}>{CONSENT}</label>
+      </div>
+    )}
+
+    {/* Honeypot — hidden from people, irresistible to bots. */}
+    <div class="gm-form__hp" aria-hidden="true">
+      <label>
+        Website
+        <input type="text" name="website" tabindex="-1" autocomplete="off" />
+      </label>
+    </div>
+
+    <div class="gm-form__submit-row">
+      <button type="submit" class="gm-form__submit">{SUBMIT_TEXT}</button>
+    </div>
+
+    <p class="gm-form__status" role="status" aria-live="polite"></p>
+  </form>
+</div>
+
+<style>
+  /* The contact values were measured inside the live LeadConnector widget's own
+     document: 36px rows on white at 5px radius with 8px/15px padding, Inter 12px,
+     a 108px message box, and a 47px #46B7DF submit at 4px radius. The billing
+     values come from the rendered WPForms markup, which the Elementor page styles
+     with the kit's Poppins. */
+  .gm-form {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .gm-form__form { box-sizing: border-box; }
+
+  .gm-form__rows {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 16px;
+  }
+
+  .gm-form__field {
+    flex: 1 1 100%;
+    min-width: 0;
+    margin-bottom: 16px;
+  }
+
+  .gm-form__field--half { flex: 1 1 calc(50% - 8px); }
+
+  @media (max-width: 767px) {
+    .gm-form__field--half { flex: 1 1 100%; }
+  }
+
+  .gm-form__label {
+    display: block;
+    margin-bottom: 6px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+    color: #272727;
+  }
+
+  .gm-form__req { color: #d93025; }
+
+  /* The LeadConnector widget shows no labels at all — placeholders only — so the
+     contact form's stay in the accessibility tree and out of the picture. */
+  .gm-form__label--hidden,
+  .gm-form__hp {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .gm-form__form input[type='text'],
+  .gm-form__form input[type='email'],
+  .gm-form__form input[type='tel'],
+  .gm-form__form input[type='number'],
+  .gm-form__form textarea {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 8px 15px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    line-height: 20px;
+    color: #272727;
+    background: #fff;
+    border: 1px solid #d5d9dd;
+    border-radius: 5px;
+  }
+
+  .gm-form--contact .gm-form__form input,
+  .gm-form--contact .gm-form__form textarea {
+    font-family: 'Inter', 'Poppins', sans-serif;
+    font-size: 12px;
+    min-height: 36px;
+  }
+
+  .gm-form__form input::placeholder,
+  .gm-form__form textarea::placeholder {
+    color: #98a2b3;
+    opacity: 1;
+  }
+
+  /* The widget draws a mail glyph inside the email field and pads the text past it. */
+  .gm-form__input--email {
+    padding-left: 36px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2398a2b3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2' y='4' width='20' height='16' rx='2'/%3E%3Cpath d='m22 7-10 6L2 7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    background-size: 16px 16px;
+  }
+
+  .gm-form__form textarea {
+    height: 108px;
+    resize: vertical;
+  }
+
+  .gm-form__form input:focus-visible,
+  .gm-form__form textarea:focus-visible {
+    outline: 2px solid #46b7df;
+    outline-offset: 1px;
+  }
+
+  /* `:user-invalid` rather than `:invalid`: an untouched required field is invalid
+     from the first paint, and must not be painted as an error. */
+  .gm-form__form input:user-invalid,
+  .gm-form__form textarea:user-invalid {
+    border-color: #d93025;
+  }
+
+  .gm-form__total {
+    padding: 8px 0;
+    font-family: 'Poppins', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: #272727;
+  }
+
+  /* WPForms keeps the mirrored input in the DOM but out of sight. */
+  .gm-form__field--total input { display: none; }
+
+  .gm-form__consent {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .gm-form__consent input {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin: 3px 0 0;
+    accent-color: #46b7df;
+  }
+
+  .gm-form__consent label {
+    margin-left: 10px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #272727;
+  }
+
+  .gm-form__submit-row { margin-top: 15px; }
+
+  /* `:focus` is pinned to the resting look on purpose: the Hello theme styles every
+     bare `button:hover`/`:focus` with its own accent colour, which would repaint the
+     widget's blue. `:focus-visible` still shows. */
+  .gm-form__submit,
+  .gm-form__submit:hover,
+  .gm-form__submit:focus {
+    display: block;
+    width: 100%;
+    height: 47px;
+    padding: 12px 10px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 23px;
+    color: #fff;
+    text-align: center;
+    background: #46b7df;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .gm-form--billing .gm-form__submit,
+  .gm-form--billing .gm-form__submit:hover,
+  .gm-form--billing .gm-form__submit:focus {
+    width: auto;
+    min-width: 160px;
+    padding: 12px 28px;
+  }
+
+  .gm-form__submit:hover { background: #2f9fc7; }
+  .gm-form__submit:focus-visible { outline: 2px solid #272727; outline-offset: 2px; }
+  .gm-form__submit[disabled] { opacity: 0.6; cursor: progress; }
+
+  .gm-form__status {
+    margin: 12px 0 0;
+    min-height: 1.4em;
+    font-family: 'Poppins', sans-serif;
+    font-size: 14px;
+    color: inherit;
+  }
+
+  .gm-form__status[data-state='error'] { color: #d93025; }
+  .gm-form__status[data-state='ok'] { color: #2f7d4f; }
+</style>
+
+<script>
+  /**
+   * Delegated and registered exactly once. Astro inlines a component's script per
+   * instance, so without the guard two handlers would race on one submit if a page
+   * ever carried both forms: the first reports success and resets the form, the
+   * second then clears that message and re-validates the now-empty fields.
+   */
+  const w = window as unknown as { __gmFormBound?: boolean };
+  if (!w.__gmFormBound) {
+    w.__gmFormBound = true;
+
+    document.addEventListener('submit', async (event) => {
+      const form = (event.target as HTMLElement).closest<HTMLFormElement>('form.gm-form__form');
+      if (!form) return;
+      event.preventDefault();
+
+      const status = form.querySelector<HTMLParagraphElement>('.gm-form__status')!;
+      const submit = form.querySelector<HTMLButtonElement>('.gm-form__submit')!;
+      const endpoint = form.dataset.endpoint || '';
+
+      const say = (message: string, state: 'ok' | 'error' | '') => {
+        status.textContent = message;
+        if (state) status.dataset.state = state;
+        else delete status.dataset.state;
+      };
+
+      say('', '');
+      if (!form.reportValidity()) return;
+
+      form.querySelector<HTMLInputElement>('[data-fill="path"]')!.value = location.pathname;
+
+      // A filled honeypot is a bot: show success, send nothing.
+      const honeypot = form.querySelector<HTMLInputElement>('input[name="website"]')!;
+      if (honeypot.value.trim()) {
+        form.reset();
+        say('Thanks — we will be in touch shortly.', 'ok');
+        return;
+      }
+
+      if (!endpoint) {
+        say('This form is not connected yet. Please call or email us instead.', 'error');
+        return;
+      }
+
+      submit.disabled = true;
+      const original = submit.textContent;
+      submit.textContent = 'Sending…';
+
+      try {
+        const response = await fetch(endpoint, { method: 'POST', body: new FormData(form) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        form.reset();
+        form.dispatchEvent(new Event('gm:reset'));
+        say('Thanks — we will be in touch shortly.', 'ok');
+      } catch {
+        say('Sorry, something went wrong. Please try again or call us.', 'error');
+      } finally {
+        submit.disabled = false;
+        submit.textContent = original;
+      }
+    });
+  }
+</script>

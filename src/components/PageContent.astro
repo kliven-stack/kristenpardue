@@ -1,0 +1,46 @@
+---
+/**
+ * Renders a cloned page fragment, swapping the marked originals for our own static
+ * forms when a Growthmap endpoint is configured.
+ *
+ * Astro components cannot be injected through `set:html`, so the fragment is split
+ * on the markers extract.mjs left around each form and re-emitted around the
+ * component.
+ */
+import ContactForm from './ContactForm.astro';
+import { CONTACT_ENDPOINT, FORM_MODE } from '../config';
+
+type Variant = 'contact' | 'billing';
+
+interface Props {
+  html: string;
+  /** Names this fragment's region, so a form inside it gets unique field ids. */
+  region?: string;
+}
+const { html, region = 'content' } = Astro.props as Props;
+
+// Without an endpoint, keep what WordPress served: the LeadConnector iframe still
+// works (GoHighLevel hosts it), and the WPForms markup at least still *looks* like
+// the page the client signed off on rather than being replaced by a form that
+// posts nowhere.
+const useOwnForm = FORM_MODE === 'growthmap' && CONTACT_ENDPOINT !== '';
+
+const MARKER = /<!--gm-form:(contact|billing):start-->[\s\S]*?<!--gm-form:\1:end-->/g;
+
+/** [html, form, html, form, …, html] */
+type Part = { html: string } | { variant: Variant };
+const parts: Part[] = [];
+let cursor = 0;
+for (const match of html.matchAll(MARKER)) {
+  parts.push({ html: html.slice(cursor, match.index) });
+  parts.push(useOwnForm ? { variant: match[1] as Variant } : { html: match[0] });
+  cursor = match.index + match[0].length;
+}
+parts.push({ html: html.slice(cursor) });
+---
+
+{parts.map((part) =>
+  'variant' in part
+    ? <ContactForm variant={part.variant} region={region} />
+    : <Fragment set:html={part.html} />,
+)}

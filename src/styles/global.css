@@ -1,0 +1,45 @@
+/* Tailwind v4 — theme + utilities only, and only for the components we author.
+
+   Preflight is deliberately NOT imported: the cloned pages ship Elementor's own
+   compiled CSS from public/wp/css/, and a reset layered on top would change the
+   original rendering.
+
+   `source(none)` matters just as much. Tailwind's automatic content detection
+   scans every file in the project, including the ported WordPress fragments —
+   and WordPress class names collide with Tailwind utility names (`size-full` on
+   every full-size image figure, plus `hidden`, `container`, `block`, `table`,
+   `static`). Only our own components are scanned. */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+@source '../components';
+@source '../pages';
+
+@theme {
+  /* Elementor kit 6's global colours, verbatim from public/wp/css/elementor-post-6.css.
+     `primary` and `accent` are the same blue — the one on every CTA, the chat
+     bubble and the LeadConnector submit button. */
+  --color-brand-primary: #46b7df;
+  --color-brand-secondary: #363636;
+  --color-brand-text: #272727;
+  --color-brand-accent: #46b7df;
+  --color-brand-white: #ffffff;
+  --color-brand-mist: #f2f2f2;
+
+  /* Form field chrome, matched by ContactForm.astro to the two originals. */
+  --color-field-border: #d5d9dd;
+  --color-field-placeholder: #98a2b3;
+
+  /* Elementor kit typography globals — Poppins throughout, at three weights. */
+  --font-primary: 'Poppins', sans-serif;
+  --font-secondary: 'Poppins', sans-serif;
+  --font-text: 'Poppins', sans-serif;
+  --font-accent: 'Poppins', sans-serif;
+
+  /* Elementor breakpoints — base is mobile, md = tablet, lg = desktop */
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1025px;
+
+  /* The kit's boxed-section width */
+  --container-elementor: 1140px;
+}
