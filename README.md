@@ -2,7 +2,7 @@
 
 A static Astro rebuild of the WordPress/Elementor site at
 <https://kristenpardue.com> (Kristen Pardue — health coaching, essential oils,
-speaking). 177 routes, cloned from the live site's own HTML and its compiled
+speaking). 172 routes, cloned from the live site's own HTML and its compiled
 Elementor CSS, verified by measured computed-style diffs against production at
 1440 / 900 / 390 px.
 
@@ -14,15 +14,39 @@ What is in the 177:
 
 | | |
 | --- | --- |
-| 40 | pages (everything in Yoast's `page-sitemap.xml`) |
+| 35 | pages — everything in Yoast's `page-sitemap.xml` except the five retired below |
 | 82 | posts |
 | 15 | category archives, plus 22 pages of their pagination |
 | 1 | author archive, plus 6 pages of its pagination |
 | 1 | blog index, plus 9 pages of its pagination |
 | 1 | the theme's own 404 template |
 
-Every URL in all four of Yoast's sitemaps is built. So is `/essential-oils/`,
-which is a real page that no sitemap lists.
+Every URL in all four of Yoast's sitemaps is built except the five retired below,
+and each of those keeps a 301 so it still resolves. So is `/essential-oils/`, which
+is a real page that no sitemap lists.
+
+### Retired pages
+
+Five URLs are deliberately **not** built. Nothing linked to any of them, every one
+was in Yoast's sitemap, and each showed a visitor something broken or superseded:
+
+| URL | Why | 301s to |
+| --- | --- | --- |
+| `/elementor-3137/` | an unfinished draft named after its own post id, with a hand-copied header | `/` |
+| `/foundations-old/` | superseded by `/foundations/` — same title, older copy | `/foundations/` |
+| `/shop/` | WooCommerce is off; renders its title and nothing else | `/` |
+| `/my-account/` | prints the raw text `[woocommerce_my_account]` to the visitor | `/` |
+| `/checkout/` | prints the raw text `[woocommerce_checkout]` to the visitor | `/` |
+
+The skip lives in `scripts/extract.mjs`, not in a deleted fragment — `npm run
+extract` rewrites `src/fragments/` from the crawl, so a deleted file would come
+straight back.
+
+**Not retired, though just as unlinked:** the six booking pages, the eight
+`/favorite-products/` children, `/foundations/`, `/gi-mapping/`,
+`/patient-wellness-intake/`, `/links/` and `/detox-your-home/`. Those are real pages
+people are sent to by link, email and ad. Being absent from the nav is a navigation
+problem for the client to fix — see bug 9 — not a reason to delete them.
 
 ---
 
@@ -74,7 +98,7 @@ The pages are **ported, not rebuilt**. `scripts/extract.mjs` splits each crawled
 page into header / content / footer / popup fragments of Elementor's own rendered
 markup, rewrites URLs to be root-relative, and records the page's metadata and its
 ordered stylesheet list. One dynamic route (`src/pages/[...slug].astro`) renders
-all 177 routes from `src/data/pages.json`, re-linking Elementor's compiled per-post
+all 172 routes from `src/data/pages.json`, re-linking Elementor's compiled per-post
 CSS in exactly the order WordPress emitted it. That cascade is what makes the clone
 pixel-accurate, so it ships verbatim rather than being re-derived.
 
@@ -261,18 +285,17 @@ the store back or retire these twelve URLs.
 
 **8. Four orphaned drafts are published and indexed.** `/elementor-3137/` (named
 after its own post id, containing a hand-copied header and an unfinished Elementor
-Pro form), `/foundations-old/`, `/schedule/` and `/30-days-health-follow-up/`.
-Nothing links to any of them; Yoast lists all four. *Fix ready:* `fixPageMeta()`
-marks them `noindex, nofollow`. **Client decision:** delete or finish.
+Pro form) and `/foundations-old/` are now **retired** (see above). `/schedule/` and
+`/30-days-health-follow-up/` are still built — they are booking pages that may well
+be linked from emails — and `fixPageMeta()` marks them `noindex, nofollow` behind
+`PUBLIC_APPLY_FIXES`. **Client decision:** delete or finish those two.
 
-**9. Thirty of the 177 routes have no inbound link anywhere on the site.** Beyond
-bug 8's four, that includes all eight `/favorite-products/*` sub-pages, the six
+**9. Twenty-four of the 172 routes have no inbound link anywhere on the site.** That includes all eight `/favorite-products/*` sub-pages, the six
 booking pages (`/15-min-speaking-inquiry/`, `/30-min-essential-oils-call/`,
 `/60-min-essential-oils/`, `/60-min-person-consultation/`,
 `/30-days-health-initial/`, `/book-online-consultation/`), `/foundations/`,
 `/foundations-health-program-registration/`, `/gi-mapping/`,
-`/patient-wellness-intake/`, `/detox-your-home/`, `/links/`, `/scheduling/` and the
-three WooCommerce pages. `/favorite-products/` itself is reachable and contains
+`/patient-wellness-intake/`, `/detox-your-home/`, `/links/` and `/scheduling/`. `/favorite-products/` itself is reachable and contains
 exactly one link — a button that opens a popup — so its eight children are
 unreachable by navigation. All are cloned and all resolve; they are simply
 invisible. **Client decision:** link them or retire them.
@@ -380,7 +403,7 @@ entrance animation has settled.
 
 | Run | Result |
 | --- | --- |
-| **1440 px, all 177 routes** | **177 comparisons, 0 diffs** |
+| **1440 px, all 177 routes** | **177 comparisons, 0 diffs** (before the five retirements below) |
 | **900 px, 33 routes** (one per template, skin and page type) | **0 diffs** |
 | **390 px, the same 33** | **0 diffs** |
 | `npm run audit` | 177 pages, 180 stylesheets, **20,186 references checked**, no broken internal reference beyond the seven production already has |

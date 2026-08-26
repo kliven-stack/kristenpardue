@@ -217,6 +217,41 @@ function saveInline(id, content) {
   return name;
 }
 
+/**
+ * Pages retired from the clone, with the URL kept alive by a 301 in vercel.json.
+ *
+ * Nothing links to any of them, and every one is advertised in Yoast's sitemap, so
+ * each is currently an indexable page that shows a visitor something broken or
+ * superseded:
+ *
+ *   /elementor-3137/   an unfinished draft named after its own post id, carrying a
+ *                      hand-copied header and an Elementor Pro form. -> /
+ *   /foundations-old/  superseded by /foundations/, same title, older copy, and an
+ *                      evergreen countdown still running on it. -> /foundations/
+ *   /shop/             WooCommerce is switched off. /shop/ renders its title and
+ *   /my-account/       nothing else; the other two print the raw shortcode text
+ *   /checkout/         `[woocommerce_my_account]` and `[woocommerce_checkout]` to
+ *                      the visitor. -> /
+ *
+ * Retiring happens here rather than by deleting a fragment, because `npm run
+ * extract` rewrites `src/fragments/` from the crawl and a deleted file would come
+ * straight back.
+ *
+ * NOT retired, though they are just as unlinked: the six booking pages, the eight
+ * /favorite-products/ children, /foundations/, /gi-mapping/,
+ * /patient-wellness-intake/, /links/ and /detox-your-home/. Those are real pages
+ * people are sent to by link, email and ad — being absent from the nav is a
+ * navigation problem for the client to fix, not a reason to delete them. See the
+ * README.
+ */
+const RETIRED = new Set([
+  '/elementor-3137/',
+  '/foundations-old/',
+  '/shop/',
+  '/my-account/',
+  '/checkout/',
+]);
+
 const files = (await readdir(HTML)).filter((f) => f.endsWith('.html')).sort();
 const manifest = JSON.parse(await readFile(path.join(ROOT, '_extract/crawl-manifest.json'), 'utf8'));
 const pathBySlug = new Map();
@@ -234,6 +269,7 @@ for (const file of files) {
   const slug = file.replace(/\.html$/, '');
   const urlPath = pathBySlug.get(slug.toLowerCase());
   if (!urlPath) { console.warn('no url for', file); continue; }
+  if (RETIRED.has(urlPath)) { console.log(`retired ${urlPath}`); continue; }
   const raw = await readFile(path.join(HTML, file), 'utf8');
   const $ = cheerio.load(raw, { decodeEntities: false });
 

@@ -394,17 +394,15 @@ for (const width of [900, 390]) {
   await ctx.close();
 }
 {
-  const { ctx, page } = await open('/foundations-old/');
-  await page.waitForTimeout(2500);
-  const cd = await page.evaluate(() => {
-    const w = document.querySelector('.uael-countdown-wrapper');
-    const digits = [...w.querySelectorAll('.uael-countdown-item')].map((e) => e.textContent.trim());
-    return { type: w.dataset.countdownType, display: w.style.display, digits,
-      cookie: document.cookie.includes('uael-time-to-run-') };
-  });
-  check('countdown: the evergreen timer runs and remembers its start in a cookie',
-    cd.type === 'evergreen' && cd.display !== 'none' && cd.digits.filter(Boolean).length === 4 && cd.cookie,
-    JSON.stringify(cd));
+  // The evergreen timer this used to exercise was on /foundations-old/, which is now
+  // retired (see the README). No page in the build carries one any more, so the
+  // assertion is that the *only* countdown left is the expired fixed one above —
+  // if a re-extract ever brings an evergreen timer back, this fails and the branch
+  // in initCountdown() gets its coverage back with it.
+  const { ctx, page } = await open('/foundations/');
+  const kinds = await page.$$eval('.uael-countdown-wrapper', (els) => els.map((e) => e.dataset.countdownType));
+  check('countdown: no evergreen timer remains in the build',
+    kinds.length > 0 && kinds.every((k) => k === 'fixed'), JSON.stringify(kinds));
   await ctx.close();
 }
 

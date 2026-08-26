@@ -13,6 +13,12 @@
     }
   ],
   "redirects": [
+    { "source": "/elementor-3137", "destination": "/", "permanent": true },
+    { "source": "/foundations-old", "destination": "/foundations/", "permanent": true },
+    { "source": "/shop", "destination": "/", "permanent": true },
+    { "source": "/my-account", "destination": "/", "permanent": true },
+    { "source": "/checkout", "destination": "/", "permanent": true },
+
     { "source": "/sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/sitemap_index.xml", "destination": "/sitemap-index.xml", "permanent": true },
     { "source": "/wp-sitemap.xml", "destination": "/sitemap-index.xml", "permanent": true },
