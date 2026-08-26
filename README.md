@@ -78,7 +78,7 @@ all 177 routes from `src/data/pages.json`, re-linking Elementor's compiled per-p
 CSS in exactly the order WordPress emitted it. That cascade is what makes the clone
 pixel-accurate, so it ships verbatim rather than being re-derived.
 
-What is *not* ported is the JavaScript. `src/scripts/elementor.js` (~1,100 lines)
+What is *not* ported is the JavaScript. `src/scripts/elementor.js` (~1,580 lines)
 replaces jQuery, elementor-frontend, elementor-pro-frontend, smartmenus,
 jquery.sticky, Swiper, the Essential Addons bundle, the Ultimate Addons bundle and
 the Gravity Forms frontend bundle. It does not re-invent their behaviour; it
@@ -94,13 +94,13 @@ The pieces it drives:
 | Sticky header | `.header-mainmenu` pins from the first paint (it is the first thing in the document), with the visibility-hidden spacer clone and the inline `position: fixed; width; top` Elementor writes |
 | Nav menu | SmartMenus' real options — 250 ms show, **500 ms hide** (playbook §3.11), `hideOnClick`, and the touch two-tap — plus its `has-submenu` / `aria-*` annotations and the stretched burger panel |
 | Carousels | four, across three skins: two testimonial carousels, one media carousel (`carousel` skin) and one `slideshow` skin, which is a one-up stage plus a linked thumbnail strip |
-| Posts grids | `elementor-has-item-ratio` on all 57 widgets, plus the per-image `elementor-fit-height` decision |
+| Posts grids | `elementor-has-item-ratio` on all 56 widgets, plus the per-image `elementor-fit-height` decision |
 | Toggles | `/faq/` and `/get-essential-oils/` — open writes `display: block` inline, close removes it |
 | Search | the header magnifier's full-screen overlay |
 | Countdowns | two Ultimate Addons timers, in opposite states — see bug 12 |
 | Gravity Forms | the wrapper's `display:none` removed, the one conditional-logic rule applied and re-applied as the visitor types, and the UAEL styler's `<span class="uael-gf-select-custom">` around every `<select>` |
 | Popups | all three templates, parked in `<template>` so the pre-open document matches production's (which carries zero `[data-elementor-type="popup"]` nodes), with the page-load trigger's 1 s delay and its once-per-visitor cap in the same `localStorage` key Elementor uses |
-| Entrance animations | 251 elements carry one, most of them also rendering `elementor-invisible`; without the observer those stay invisible forever. Resolved per device — one element's animation is mobile-only |
+| Entrance animations | 245 elements carry one, most of them also rendering `elementor-invisible`; without the observer those stay invisible forever. Resolved per device — one element's animation is mobile-only |
 
 ### Layout
 
@@ -219,9 +219,9 @@ it reproduces on any host because the block is at the URL, not the response.
 why it is opt-in.
 
 **2. Seven more `http://` asset URLs in the compiled CSS, and 34 in post content.**
-Six background images (`bg.jpg`, `diagonal-noise.png`, `gray.jpg`,
-`new-brash-gray2.png`, two `kristen-pardue_light-pink*.jpg`) plus 34 images and one
-PDF link inside posts. These are mixed *passive* content, which current browsers
+Seven background images (`bg.jpg`, `diagonal-noise.png`, `gray.jpg`,
+`new-brash-gray2.png` and three `kristen-pardue_light-pink*.jpg`), plus 33 images
+and one PDF link inside posts. These are mixed *passive* content, which current browsers
 auto-upgrade, so they render on production and they render here — but any browser
 that blocks rather than upgrades loses them. All are mirrored under `public/`, so
 the upgraded request is served locally once the domain points at the clone.
