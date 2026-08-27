@@ -866,9 +866,23 @@ function initPostsGrid(widget) {
   const all = () => thumbs.forEach(fit);
   for (const thumb of thumbs) {
     const img = thumb.querySelector('img');
-    if (img && !img.complete) img.addEventListener('load', () => fit(thumb), { once: true });
     fit(thumb);
+    if (!img) continue;
+    // Three chances, because one is not enough and the gap is visible.
+    //
+    // `load` alone was the original wiring, and it loses the race often enough for
+    // the fidelity harness to catch it: a card measured before its handler runs is
+    // 268x182 instead of 393x268, because without `elementor-fit-height` the image
+    // is sized by width and stops short of the ratio box. What the harness sees on
+    // a fast connection, a visitor on a slow one sees as cards resizing under them.
+    //
+    // So: now, again once the bitmap is actually decodable, and again at window
+    // load for anything that arrived from cache with `complete` already true and no
+    // `load` event left to fire.
+    if (!img.complete) img.addEventListener('load', () => fit(thumb), { once: true });
+    img.decode?.().then(() => fit(thumb), () => {});
   }
+  window.addEventListener('load', all);
   window.addEventListener('resize', all);
 }
 
